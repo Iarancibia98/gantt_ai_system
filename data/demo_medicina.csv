@@ -1,0 +1,11 @@
+nombre,recurso,area,fecha_inicio,fecha_fin,avance,descripcion
+Implementación HIS módulo urgencias,Dr. Andrés Pinto,TI / Tecnología,01/04/2026,20/04/2026,55,Despliegue del sistema de historia clínica electrónica
+Capacitación enfermería en nuevo protocolo,Enf. Carmen Lagos,Salud / Medicina,06/04/2026,10/04/2026,100,Protocolo de manejo de vía venosa central
+Mantención equipos de imagenología,Téc. Roberto Salas,Mantenimiento,08/04/2026,09/04/2026,100,Calibración TAC y resonador magnético
+Adquisición insumos quirúrgicos Q2,Dra. Paula Soto,Logística / Supply Chain,05/04/2026,18/04/2026,65,Compra de material desechable para pabellón
+Acreditación Joint Commission,Dr. Héctor Moya,Ingeniería / Proyectos,01/04/2026,30/06/2026,20,Preparación documentación y auditorías internas
+Reclutamiento médicos especialistas,RRHH Clínica,RRHH / Administración,01/04/2026,30/04/2026,40,Búsqueda traumatólogo y cardiólogo
+Renovación contrato laboratorio externo,Dra. Sofía Reyes,Comercial / Ventas,07/04/2026,14/04/2026,75,Negociación tarifas exámenes de alta complejidad
+Instalación dispensadores automáticos,Farm. Luis Bravo,Operaciones,14/04/2026,17/04/2026,0,Pyxis en UCI y pabellón central
+Protocolo de seguridad del paciente,Enf. María Cid,Salud / Medicina,10/04/2026,24/04/2026,15,Implementación checklist quirúrgico OMS
+Actualización red clínica interna,Téc. Felipe Ramos,TI / Tecnología,20/04/2026,25/04/2026,0,Migración switches core a fibra óptica

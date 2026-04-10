@@ -1,0 +1,11 @@
+nombre,recurso,area,fecha_inicio,fecha_fin,avance,descripcion,hitos
+Estudio de factibilidad geológica,Carlos Romero,Ingeniería / Proyectos,01/04/2026,15/04/2026,100,Análisis de muestras y sondajes del yacimiento,"Recolección de muestras,Análisis de laboratorio,Interpretación de sondajes,Informe final"
+Diseño de tronadura Sector A,Andrés Vega,Operaciones,10/04/2026,20/04/2026,75,Cálculo de cargas y patrón de perforación,"Levantamiento topográfico,Cálculo de cargas explosivas,Diseño del patrón de perforación,Revisión y aprobación"
+Mantención preventiva flota LHD,Luis Tapia,Mantenimiento,05/04/2026,08/04/2026,100,Revisión de frenos y sistema hidráulico,"Inspección inicial,Revisión de frenos,Revisión sistema hidráulico,Cierre y documentación"
+Instalación sistema de ventilación,Pedro Soto,Operaciones,12/04/2026,25/04/2026,40,Instalación de ductos nivel 400,"Ingeniería de detalle,Adquisición de materiales,Instalación ductos nivel 400,Pruebas y puesta en marcha"
+Capacitación uso de EPP,María Fuentes,RRHH / Administración,07/04/2026,07/04/2026,100,Charla obligatoria para personal nuevo,"Preparación del material,Ejecución de charla,Registro de asistencia"
+Gestión de insumos explosivos,Jorge Muñoz,Logística / Supply Chain,08/04/2026,18/04/2026,60,Coordinación con proveedor ENAEX,"Solicitud de pedido,Coordinación con ENAEX,Recepción y verificación,Almacenamiento en polvorín"
+Actualización SCADA mina,Roberto Díaz,TI / Tecnología,14/04/2026,28/04/2026,20,Migración a versión 4.2 del sistema de monitoreo,"Análisis de requerimientos,Instalación versión 4.2,Configuración y pruebas,Capacitación operadores,Go-live producción"
+Contrato servicios de transporte,Ana Castillo,Comercial / Ventas,01/04/2026,10/04/2026,90,Licitación camiones de extracción,"Bases de licitación,Recepción de ofertas,Evaluación técnica-económica,Adjudicación y firma"
+Reparación chancador primario,Felipe Araya,Mantenimiento,18/04/2026,22/04/2026,0,Cambio de mandíbulas y ajuste de gap,"Desmontaje de mandíbulas,Adquisición de repuestos,Montaje y ajuste de gap,Prueba de funcionamiento"
+Cierre trimestral de costos,Claudia Ríos,RRHH / Administración,29/04/2026,30/04/2026,0,Consolidación de gastos operacionales Q1,"Recopilación de reportes,Consolidación en sistema,Revisión con jefaturas,Informe final Q1"

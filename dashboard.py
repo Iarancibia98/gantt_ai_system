@@ -1,202 +1,249 @@
 import streamlit as st
 import plotly.graph_objects as go
-import plotly.express as px
 import pandas as pd
 from datetime import date
-from data import get_proyecto, calcular_estado_tarea, calcular_duracion, avance_total_proyecto
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# HELPERS DE GRÁFICOS
-# ─────────────────────────────────────────────────────────────────────────────
-PLOTLY_LAYOUT = dict(
-    plot_bgcolor="#0a0f1e",
-    paper_bgcolor="#0a0f1e",
-    font=dict(color="#94a3b8", family="Space Grotesk"),
-    margin=dict(l=20, r=20, t=40, b=20),
+from styles import aplicar_estilos, COLORES, COLORES_ESTADO_EXT, PLOTLY_LAYOUT, kpi_card
+from data import (
+    get_proyecto,
+    calcular_estado_tarea,
+    calcular_duracion,
+    avance_total_proyecto,
+    calcular_avance_tarea,
 )
 
-# ── Fix Bug 1: solo 4 estados reales ─────────────────────────────────────────
-COLORES_ESTADO = {
-    "Completada":  "#4ade80",
-    "En Progreso": "#38bdf8",
-    "Atrasada":    "#f87171",
-    "Pendiente":   "#64748b",
-}
 
-
+# ─────────────────────────────────────────────────────────────────────────────
+# ESTADO EXTENDIDO CON RIESGO
+# ─────────────────────────────────────────────────────────────────────────────
 def _calcular_estado_riesgo(t: dict, hoy: date) -> str:
     """
-    Extiende calcular_estado_tarea con un estado 'En Riesgo':
-    tarea En Progreso cuyo avance real < avance esperado por tiempo transcurrido.
+    Igual que calcular_estado_tarea pero agrega 'En Riesgo' cuando el avance
+    real queda ≥20 pts por debajo del esperado. Respeta hitos via calcular_avance_tarea.
     """
     estado = calcular_estado_tarea(t, hoy)
     if estado != "En Progreso":
         return estado
-
     try:
         duracion     = (t["fecha_fin"] - t["fecha_inicio"]).days or 1
         transcurrido = (hoy - t["fecha_inicio"]).days
         esperado     = round((transcurrido / duracion) * 100)
-        real         = t.get("avance", 0)
-        # En riesgo si avance real está 20+ puntos por debajo del esperado
-        if real < esperado - 20:
+        if calcular_avance_tarea(t) < esperado - 20:
             return "En Riesgo"
     except Exception:
         pass
-
     return estado
 
 
-COLORES_ESTADO_EXT = {
-    **COLORES_ESTADO,
-    "En Riesgo": "#fb923c",
-}
-
-
+# ─────────────────────────────────────────────────────────────────────────────
+# GRÁFICOS
+# ─────────────────────────────────────────────────────────────────────────────
 def gauge_avance(avance: float) -> go.Figure:
-    color = "#4ade80" if avance >= 80 else "#facc15" if avance >= 40 else "#f87171"
+    if avance >= 80:
+        color = COLORES["success"]
+    elif avance >= 40:
+        color = COLORES["warning"]
+    else:
+        color = COLORES["danger"]
+
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=avance,
-        number={"suffix": "%", "font": {"color": color, "size": 36, "family": "JetBrains Mono"}},
+        number={"suffix": "%", "font": {"color": color, "size": 38, "family": "DM Mono"}},
         gauge={
-            "axis": {"range": [0, 100], "tickcolor": "#334155",
-                     "tickfont": {"color": "#64748b"}},
-            "bar": {"color": color, "thickness": 0.25},
-            "bgcolor": "#1e3a5f",
+            "axis": {
+                "range": [0, 100],
+                "tickcolor": COLORES["border"],
+                "tickfont": {"color": COLORES["text_secondary"], "size": 10},
+            },
+            "bar": {"color": color, "thickness": 0.22},
+            "bgcolor": "#F4F6F9",
             "borderwidth": 0,
             "steps": [
-                {"range": [0,  33], "color": "rgba(248,113,113,0.1)"},
-                {"range": [33, 66], "color": "rgba(250,204,21,0.1)"},
-                {"range": [66,100], "color": "rgba(74,222,128,0.1)"},
+                {"range": [0,  40], "color": "rgba(220,53,69,0.08)"},
+                {"range": [40, 80], "color": "rgba(255,193,7,0.08)"},
+                {"range": [80,100], "color": "rgba(40,167,69,0.08)"},
             ],
         },
-        title={"text": "Avance total", "font": {"color": "#94a3b8", "size": 14}},
+        title={"text": "Avance total", "font": {"color": COLORES["text_secondary"], "size": 13}},
     ))
-    fig.update_layout(**PLOTLY_LAYOUT, height=220)
+    layout = {**PLOTLY_LAYOUT}
+    layout.update(height=230, margin=dict(l=20, r=20, t=30, b=10))
+    fig.update_layout(**layout)
     return fig
 
 
 def pie_estados(conteo: dict) -> go.Figure:
     labels = list(conteo.keys())
     values = list(conteo.values())
-    colors = [COLORES_ESTADO_EXT.get(l, "#94a3b8") for l in labels]
+    colors = [COLORES_ESTADO_EXT.get(l, COLORES["text_secondary"]) for l in labels]
 
     fig = go.Figure(go.Pie(
         labels=labels, values=values,
-        hole=0.55,
-        marker=dict(colors=colors, line=dict(color="#0a0f1e", width=2)),
-        textfont=dict(color="white", size=12),
-        hovertemplate="%{label}: %{value} tarea(s)<extra></extra>",
+        hole=0.6,
+        marker=dict(colors=colors, line=dict(color="#FFFFFF", width=3)),
+        textfont=dict(color=COLORES["text_primary"], size=12, family="DM Sans"),
+        hovertemplate="%{label}: <b>%{value}</b> tarea(s)<extra></extra>",
     ))
-    fig.update_layout(
-        **PLOTLY_LAYOUT, height=260,
-        title=dict(text="Distribución de estados",
-                   font=dict(color="#f0f9ff", size=14))
+    layout = {**PLOTLY_LAYOUT}
+    layout.update(
+        height=260,
+        title=dict(
+            text="<b>Distribución de estados</b>",
+            font=dict(color=COLORES["text_primary"], size=13, family="DM Sans"),
+            x=0, xanchor="left",
+        ),
+        legend=dict(font=dict(color=COLORES["text_secondary"], size=11), orientation="v"),
     )
+    fig.update_layout(**layout)
     return fig
 
 
 def bar_avance_por_tarea(tareas: list) -> go.Figure:
-    hoy = date.today()
-    nombres = [t["nombre"][:25] + "…" if len(t["nombre"]) > 25
-               else t["nombre"] for t in tareas]
-    avances = [t.get("avance", 0) for t in tareas]
-    colores = [COLORES_ESTADO_EXT.get(
-        _calcular_estado_riesgo(t, hoy), "#94a3b8") for t in tareas]
+    hoy     = date.today()
+    nombres = [t["nombre"][:28] + "…" if len(t["nombre"]) > 28 else t["nombre"] for t in tareas]
+    avances = [calcular_avance_tarea(t) for t in tareas]
+    colores = [
+        COLORES_ESTADO_EXT.get(_calcular_estado_riesgo(t, hoy), COLORES["text_secondary"])
+        for t in tareas
+    ]
 
     fig = go.Figure(go.Bar(
         x=avances, y=nombres, orientation="h",
-        marker=dict(color=colores, opacity=0.85),
-        text=[f"{a}%" for a in avances],
+        marker=dict(color=colores, opacity=0.85, line=dict(color="white", width=0.5)),
+        text=[f"  {a}%" for a in avances],
         textposition="inside",
-        textfont=dict(color="white", size=11),
-        hovertemplate="%{y}: %{x}%<extra></extra>",
+        textfont=dict(color="white", size=11, family="DM Mono"),
+        hovertemplate="<b>%{y}</b><br>Avance: %{x}%<extra></extra>",
     ))
-    fig.update_layout(
-        **PLOTLY_LAYOUT,
-        height=max(250, 40 * len(tareas) + 60),
+    layout = {**PLOTLY_LAYOUT}
+    layout.update(
+        height=max(260, 38 * len(tareas) + 60),
         xaxis=dict(range=[0, 100], title="% Avance",
-                   gridcolor="#1e3a5f", tickfont=dict(color="#64748b")),
-        yaxis=dict(tickfont=dict(color="#e2e8f0")),
-        title=dict(text="Avance por tarea",
-                   font=dict(color="#f0f9ff", size=14)),
+                   gridcolor=COLORES["border"],
+                   tickfont=dict(color=COLORES["text_secondary"])),
+        yaxis=dict(tickfont=dict(color=COLORES["text_primary"], size=11)),
+        title=dict(text="<b>Avance por tarea</b>",
+                   font=dict(color=COLORES["text_primary"], size=13), x=0, xanchor="left"),
     )
+    fig.update_layout(**layout)
+    return fig
+
+
+def bar_hitos_por_tarea(tareas: list) -> go.Figure | None:
+    """Barras apiladas hitos completados / pendientes. Retorna None si no hay hitos."""
+    tareas_h = [t for t in tareas if t.get("hitos")]
+    if not tareas_h:
+        return None
+
+    nombres     = [t["nombre"][:28] + "…" if len(t["nombre"]) > 28 else t["nombre"] for t in tareas_h]
+    completados = [sum(1 for h in t["hitos"] if h.get("completado")) for t in tareas_h]
+    totales     = [len(t["hitos"]) for t in tareas_h]
+    pendientes  = [tot - comp for tot, comp in zip(totales, completados)]
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=completados, y=nombres, orientation="h",
+        name="Completados",
+        marker=dict(color=COLORES["success"], opacity=0.85),
+        text=[f"  {c}/{tot}" for c, tot in zip(completados, totales)],
+        textposition="inside",
+        textfont=dict(color="white", size=11, family="DM Mono"),
+        hovertemplate="<b>%{y}</b><br>Completados: %{x}<extra></extra>",
+    ))
+    fig.add_trace(go.Bar(
+        x=pendientes, y=nombres, orientation="h",
+        name="Pendientes",
+        marker=dict(color=COLORES.get("border", "#DEE2E6"), opacity=0.7),
+        hovertemplate="<b>%{y}</b><br>Pendientes: %{x}<extra></extra>",
+    ))
+
+    layout = {**PLOTLY_LAYOUT}
+    layout.update(
+        barmode="stack",
+        height=max(220, 38 * len(tareas_h) + 60),
+        xaxis=dict(title="Número de hitos",
+                   gridcolor=COLORES["border"],
+                   tickfont=dict(color=COLORES["text_secondary"])),
+        yaxis=dict(tickfont=dict(color=COLORES["text_primary"], size=11)),
+        title=dict(text="<b>Hitos por tarea</b>",
+                   font=dict(color=COLORES["text_primary"], size=13), x=0, xanchor="left"),
+        legend=dict(font=dict(color=COLORES["text_secondary"], size=11),
+                    orientation="h", y=-0.18),
+    )
+    fig.update_layout(**layout)
     return fig
 
 
 def bar_por_area(tareas: list) -> go.Figure:
-    df = pd.DataFrame([{
-        "area":   t.get("area", "Otro"),
-        "avance": t.get("avance", 0),
-    } for t in tareas])
+    df = pd.DataFrame([
+        {"area": t.get("area", "Otro"), "avance": calcular_avance_tarea(t)}
+        for t in tareas
+    ])
+    df_grp = (df.groupby("area")["avance"].mean()
+                .reset_index()
+                .rename(columns={"area": "Área", "avance": "Avance"})
+                .sort_values("Avance", ascending=True))
 
-    df_grp = df.groupby("area")["avance"].mean().reset_index()
-    df_grp.columns = ["Área", "Avance promedio"]
-    df_grp = df_grp.sort_values("Avance promedio", ascending=True)
+    colors = []
+    for v in df_grp["Avance"]:
+        if v >= 80:   colors.append(COLORES["success"])
+        elif v >= 50: colors.append(COLORES["secondary"])
+        elif v >= 30: colors.append(COLORES["warning"])
+        else:         colors.append(COLORES["danger"])
 
     fig = go.Figure(go.Bar(
-        x=df_grp["Avance promedio"],
-        y=df_grp["Área"],
-        orientation="h",
-        marker=dict(
-            color=df_grp["Avance promedio"],
-            colorscale=[[0, "#f87171"], [0.5, "#facc15"], [1, "#4ade80"]],
-            showscale=False,
-        ),
-        text=[f"{v:.0f}%" for v in df_grp["Avance promedio"]],
+        x=df_grp["Avance"], y=df_grp["Área"], orientation="h",
+        marker=dict(color=colors, opacity=0.85, line=dict(color="white", width=0.5)),
+        text=[f"  {v:.0f}%" for v in df_grp["Avance"]],
         textposition="inside",
-        textfont=dict(color="white"),
-        hovertemplate="%{y}: %{x:.1f}%<extra></extra>",
+        textfont=dict(color="white", size=11, family="DM Mono"),
+        hovertemplate="<b>%{y}</b><br>Avance promedio: %{x:.1f}%<extra></extra>",
     ))
-    fig.update_layout(
-        **PLOTLY_LAYOUT,
-        height=max(200, 50 * len(df_grp) + 60),
+    layout = {**PLOTLY_LAYOUT}
+    layout.update(
+        height=max(220, 44 * len(df_grp) + 60),
         xaxis=dict(range=[0, 100], title="Avance promedio (%)",
-                   gridcolor="#1e3a5f", tickfont=dict(color="#64748b")),
-        yaxis=dict(tickfont=dict(color="#e2e8f0")),
-        title=dict(text="Avance promedio por área",
-                   font=dict(color="#f0f9ff", size=14)),
+                   gridcolor=COLORES["border"],
+                   tickfont=dict(color=COLORES["text_secondary"])),
+        yaxis=dict(tickfont=dict(color=COLORES["text_primary"], size=11)),
+        title=dict(text="<b>Avance por área</b>",
+                   font=dict(color=COLORES["text_primary"], size=13), x=0, xanchor="left"),
     )
+    fig.update_layout(**layout)
     return fig
 
 
-def timeline_carga_recursos(tareas: list) -> go.Figure:
-    df_rows = []
-    for t in tareas:
-        recurso = t.get("recurso") or "Sin asignar"
-        dias    = calcular_duracion(t)
-        df_rows.append({"Recurso": recurso, "Días": dias, "Tarea": t["nombre"]})
-
-    df     = pd.DataFrame(df_rows)
+def bar_carga_recursos(tareas: list) -> go.Figure:
+    rows = [{"Recurso": t.get("recurso") or "Sin asignar", "Días": calcular_duracion(t)}
+            for t in tareas]
+    df     = pd.DataFrame(rows)
     df_grp = (df.groupby("Recurso")["Días"].sum()
-               .reset_index()
-               .sort_values("Días", ascending=True))
+                .reset_index()
+                .sort_values("Días", ascending=True))
+
+    max_dias = df_grp["Días"].max() or 1
+    colors   = [COLORES["primary"] if d / max_dias > 0.7 else COLORES["secondary"]
+                for d in df_grp["Días"]]
 
     fig = go.Figure(go.Bar(
-        x=df_grp["Días"],
-        y=df_grp["Recurso"],
-        orientation="h",
-        marker=dict(
-            color=df_grp["Días"],
-            colorscale=[[0, "#1e3a5f"], [1, "#38bdf8"]],
-            showscale=False,
-        ),
-        text=df_grp["Días"].astype(str) + " días",
+        x=df_grp["Días"], y=df_grp["Recurso"], orientation="h",
+        marker=dict(color=colors, opacity=0.85, line=dict(color="white", width=0.5)),
+        text=[f"  {d}d" for d in df_grp["Días"]],
         textposition="inside",
-        textfont=dict(color="white"),
-        hovertemplate="%{y}: %{x} días asignados<extra></extra>",
+        textfont=dict(color="white", size=11, family="DM Mono"),
+        hovertemplate="<b>%{y}</b><br>%{x} días asignados<extra></extra>",
     ))
-    fig.update_layout(
-        **PLOTLY_LAYOUT,
-        height=max(200, 45 * len(df_grp) + 60),
-        xaxis=dict(title="Días totales asignados",
-                   gridcolor="#1e3a5f", tickfont=dict(color="#64748b")),
-        yaxis=dict(tickfont=dict(color="#e2e8f0")),
-        title=dict(text="Carga por recurso (días)",
-                   font=dict(color="#f0f9ff", size=14)),
+    layout = {**PLOTLY_LAYOUT}
+    layout.update(
+        height=max(220, 42 * len(df_grp) + 60),
+        xaxis=dict(title="Días asignados",
+                   gridcolor=COLORES["border"],
+                   tickfont=dict(color=COLORES["text_secondary"])),
+        yaxis=dict(tickfont=dict(color=COLORES["text_primary"], size=11)),
+        title=dict(text="<b>Carga por recurso</b>",
+                   font=dict(color=COLORES["text_primary"], size=13), x=0, xanchor="left"),
     )
+    fig.update_layout(**layout)
     return fig
 
 
@@ -204,22 +251,19 @@ def timeline_carga_recursos(tareas: list) -> go.Figure:
 # PÁGINA DASHBOARD
 # ─────────────────────────────────────────────────────────────────────────────
 def pagina_dashboard():
+    aplicar_estilos()
+
     st.markdown("## 📊 Dashboard del Proyecto")
 
     proyecto = get_proyecto()
     if not proyecto:
         st.markdown("""
-<div class="card" style="text-align:center; padding: 2.5rem;">
-<div style="font-size:3rem; margin-bottom:1rem;">📊</div>
-<h3 style="color:#f0f9ff !important;">No hay proyecto seleccionado</h3>
-<p style="color:#94a3b8;">El dashboard mostrará los KPIs una vez que selecciones un proyecto.</p>
-<br>
-<p style="color:#64748b; font-size:0.85rem;">
-  1. Ve a <strong style="color:#38bdf8;">➕ Nuevo Proyecto</strong> para crear uno.<br>
-  2. O selecciona un proyecto existente desde el <strong style="color:#38bdf8;">menú lateral</strong>.
-</p>
-</div>
-""", unsafe_allow_html=True)
+        <div class="card" style="text-align:center;padding:2.5rem;">
+            <div style="font-size:3rem;margin-bottom:1rem;">📊</div>
+            <h3>No hay proyecto seleccionado</h3>
+            <p>Usa <strong>⚡ Cargar proyecto demo</strong> en el menú lateral.</p>
+        </div>
+        """, unsafe_allow_html=True)
         return
 
     info   = proyecto["info"]
@@ -227,59 +271,76 @@ def pagina_dashboard():
     hoy    = date.today()
 
     if not tareas:
-        st.markdown("""
-<div class="card" style="text-align:center; padding: 2rem;">
-<div style="font-size:2.5rem; margin-bottom:0.75rem;">📉</div>
-<h4 style="color:#f0f9ff !important;">Sin tareas registradas</h4>
-<p style="color:#94a3b8;">Agrega tareas al proyecto para ver los indicadores.</p>
-</div>
-""", unsafe_allow_html=True)
+        st.info("Sin tareas registradas. Agrega tareas desde ➕ Nuevo Proyecto.")
         return
 
-    # ── KPIs: usar _calcular_estado_riesgo para detectar "En Riesgo" ─────────
+    # ── Conteo de estados ─────────────────────────────────────────────────────
     avance  = avance_total_proyecto(tareas)
-    estados = {e: 0 for e in
-               ["Completada", "En Progreso", "En Riesgo", "Atrasada", "Pendiente"]}
+    estados = {e: 0 for e in ["Completada", "En Progreso", "En Riesgo", "Atrasada", "Pendiente"]}
     for t in tareas:
         estados[_calcular_estado_riesgo(t, hoy)] += 1
 
-    # ── Fix Bug 2: días restantes con manejo de negativos ─────────────────────
+    # ── Resumen de hitos ──────────────────────────────────────────────────────
+    total_hitos       = sum(len(t.get("hitos", [])) for t in tareas)
+    hitos_completados = sum(
+        sum(1 for h in t.get("hitos", []) if h.get("completado"))
+        for t in tareas
+    )
+    tareas_con_hitos  = sum(1 for t in tareas if t.get("hitos"))
+
+    # ── Días restantes ────────────────────────────────────────────────────────
     if isinstance(info.get("fecha_fin"), date):
-        dias_restantes = (info["fecha_fin"] - hoy).days
-        if dias_restantes < 0:
-            dias_label = f"⚠️ Vencido hace {abs(dias_restantes)}d"
-        elif dias_restantes == 0:
-            dias_label = "⚠️ Vence hoy"
+        dias_rest = (info["fecha_fin"] - hoy).days
+        if dias_rest < 0:
+            dias_label, dias_kpi = f"−{abs(dias_rest)}d", "kpi-red"
+        elif dias_rest == 0:
+            dias_label, dias_kpi = "Hoy", "kpi-orange"
         else:
-            dias_label = f"{dias_restantes} días"
+            dias_label, dias_kpi = f"{dias_rest}d", "kpi-teal"
     else:
-        dias_label = "—"
+        dias_label, dias_kpi = "—", "kpi-teal"
 
     salud = (
         "🟢 Saludable" if estados["Atrasada"] == 0 and estados["En Riesgo"] == 0 else
-        "🟠 En riesgo"  if estados["Atrasada"] == 0 and estados["En Riesgo"] > 0  else
-        "🟡 Riesgo"     if estados["Atrasada"] <= 2                                else
+        "🟠 En riesgo"  if estados["Atrasada"] == 0 else
         "🔴 Crítico"
     )
 
+    # ── KPI cards principales ─────────────────────────────────────────────────
     c1, c2, c3, c4, c5, c6 = st.columns(6)
-    c1.metric("📈 Avance total",  f"{avance}%")
-    c2.metric("✅ Completadas",    estados["Completada"])
-    c3.metric("🔄 En progreso",    estados["En Progreso"])
-    c4.metric("🟠 En riesgo",      estados["En Riesgo"])
-    c5.metric("⚠️ Atrasadas",      estados["Atrasada"])
-    c6.metric("📅 Días restantes", dias_label, help=f"Hasta {info['fecha_fin'].strftime('%d/%m/%Y')}")
+    c1.markdown(kpi_card(f"{avance}%",           "Avance total",   "kpi-purple", "📈"), unsafe_allow_html=True)
+    c2.markdown(kpi_card(estados["Completada"],  "Completadas",    "kpi-green",  "✅"), unsafe_allow_html=True)
+    c3.markdown(kpi_card(estados["En Progreso"], "En progreso",    "kpi-blue",   "🔄"), unsafe_allow_html=True)
+    c4.markdown(kpi_card(estados["En Riesgo"],   "En riesgo",      "kpi-orange", "🟠"), unsafe_allow_html=True)
+    c5.markdown(kpi_card(estados["Atrasada"],    "Atrasadas",      "kpi-red",    "⚠️"), unsafe_allow_html=True)
+    c6.markdown(kpi_card(dias_label,             "Días restantes", dias_kpi,     "📅"), unsafe_allow_html=True)
 
     st.markdown("---")
 
+    # ── Barra de progreso general ─────────────────────────────────────────────
     col_prog, col_info = st.columns([3, 1])
     with col_prog:
         st.markdown(f"**Progreso del proyecto:** {avance}%")
         st.progress(avance / 100)
     with col_info:
-        st.markdown(f"**Estado de salud:** {salud}")
-        st.caption(f"Responsable: {info.get('responsable', '—')}")
-        st.caption(f"Prioridad: {info.get('prioridad', '—')}")
+        st.markdown(f"**Salud:** {salud}")
+        st.caption(f"👤 {info.get('responsable','—')}")
+        st.caption(f"🎯 Prioridad: {info.get('prioridad','—')}")
+
+    # ── Bloque de hitos (solo si existen) ─────────────────────────────────────
+    if total_hitos > 0:
+        st.markdown("---")
+        st.markdown("### 🏁 Resumen de hitos")
+
+        h1, h2, h3, h4 = st.columns(4)
+        h1.markdown(kpi_card(tareas_con_hitos,               "Tareas con hitos",  "kpi-blue",   "📋"), unsafe_allow_html=True)
+        h2.markdown(kpi_card(total_hitos,                    "Hitos totales",     "kpi-purple", "🏁"), unsafe_allow_html=True)
+        h3.markdown(kpi_card(hitos_completados,              "Completados",       "kpi-green",  "✅"), unsafe_allow_html=True)
+        h4.markdown(kpi_card(total_hitos - hitos_completados,"Pendientes",        "kpi-orange", "⏳"), unsafe_allow_html=True)
+
+        pct_hitos = round(hitos_completados / total_hitos * 100) if total_hitos else 0
+        st.markdown(f"**Progreso de hitos:** {hitos_completados}/{total_hitos} ({pct_hitos}%)")
+        st.progress(pct_hitos / 100)
 
     st.markdown("---")
 
@@ -288,23 +349,27 @@ def pagina_dashboard():
     with col_g:
         st.plotly_chart(gauge_avance(avance), use_container_width=True)
     with col_p:
-        estados_con_datos = {k: v for k, v in estados.items() if v > 0}
-        st.plotly_chart(pie_estados(estados_con_datos), use_container_width=True)
+        st.plotly_chart(pie_estados({k: v for k, v in estados.items() if v > 0}),
+                        use_container_width=True)
 
     st.markdown("---")
 
-    # ── Fila 2: Avance por tarea ──────────────────────────────────────────────
+    # ── Avance por tarea ──────────────────────────────────────────────────────
     st.plotly_chart(bar_avance_por_tarea(tareas), use_container_width=True)
 
+    # ── Hitos por tarea (condicional) ─────────────────────────────────────────
+    fig_hitos = bar_hitos_por_tarea(tareas)
+    if fig_hitos:
+        st.plotly_chart(fig_hitos, use_container_width=True)
+
     st.markdown("---")
 
-    # ── Fila 3: Por área + Recursos ───────────────────────────────────────────
-    # ── Fix Bug 3: siempre mostrar ambos gráficos ─────────────────────────────
+    # ── Área + Recursos ───────────────────────────────────────────────────────
     col_a, col_r = st.columns(2)
     with col_a:
         st.plotly_chart(bar_por_area(tareas), use_container_width=True)
     with col_r:
-        st.plotly_chart(timeline_carga_recursos(tareas), use_container_width=True)
+        st.plotly_chart(bar_carga_recursos(tareas), use_container_width=True)
 
     st.markdown("---")
 
@@ -317,68 +382,93 @@ def pagina_dashboard():
         "Área":     t.get("area", "—"),
         "Inicio":   t["fecha_inicio"].strftime("%d/%m/%Y"),
         "Fin":      t["fecha_fin"].strftime("%d/%m/%Y"),
-        "Duración": calcular_duracion(t),
-        "Avance %": t.get("avance", 0),
-        "Estado":   _calcular_estado_riesgo(t, hoy),  # usa estado extendido
+        "Días":     calcular_duracion(t),
+        "Hitos":    (
+            f"{sum(1 for h in t['hitos'] if h.get('completado'))}/{len(t['hitos'])}"
+            if t.get("hitos") else "—"
+        ),
+        "Avance %": calcular_avance_tarea(t),
+        "Estado":   _calcular_estado_riesgo(t, hoy),
     } for t in tareas])
 
-    def color_estado(val):
+    def _color_estado(val):
         m = {
-            "Completada":  "background-color:#052e1640;color:#4ade80",
-            "En Progreso": "background-color:#0c283840;color:#38bdf8",
-            "En Riesgo":   "background-color:#431a0040;color:#fb923c",
-            "Atrasada":    "background-color:#2d0a0a40;color:#f87171",
-            "Pendiente":   "background-color:#1e293b40;color:#94a3b8",
+            "Completada":  "background-color:rgba(40,167,69,0.1);color:#28A745;font-weight:600",
+            "En Progreso": "background-color:rgba(0,123,255,0.1);color:#007BFF;font-weight:600",
+            "En Riesgo":   "background-color:rgba(255,193,7,0.12);color:#D39E00;font-weight:600",
+            "Atrasada":    "background-color:rgba(220,53,69,0.1);color:#DC3545;font-weight:600",
+            "Pendiente":   "background-color:rgba(108,117,125,0.08);color:#6C757D",
         }
         return m.get(val, "")
 
     st.dataframe(
-        df.style.map(color_estado, subset=["Estado"]),
+        df.style.map(_color_estado, subset=["Estado"]),
         use_container_width=True,
-        hide_index=True
+        hide_index=True,
     )
 
-    # ── Alertas atrasadas ─────────────────────────────────────────────────────
-    atrasadas_lista = [t for t in tareas
-                       if _calcular_estado_riesgo(t, hoy) == "Atrasada"]
-    if atrasadas_lista:
+    # ── Detalle expandible de hitos por tarea ─────────────────────────────────
+    tareas_h = [t for t in tareas if t.get("hitos")]
+    if tareas_h:
+        st.markdown("---")
+        st.markdown("### 🏁 Detalle de hitos por tarea")
+        for t in tareas_h:
+            hitos_t     = t["hitos"]
+            comp        = sum(1 for h in hitos_t if h.get("completado"))
+            avance_t    = calcular_avance_tarea(t)
+            estado_t    = _calcular_estado_riesgo(t, hoy)
+            with st.expander(
+                f"**{t['nombre']}** — {comp}/{len(hitos_t)} hitos ({avance_t}%) · {estado_t}"
+            ):
+                for h in hitos_t:
+                    st.markdown(f"{'✅' if h.get('completado') else '⬜'} {h['nombre']}")
+
+    # ── Alertas ───────────────────────────────────────────────────────────────
+    atrasadas_l = [t for t in tareas if _calcular_estado_riesgo(t, hoy) == "Atrasada"]
+    en_riesgo_l = [t for t in tareas if _calcular_estado_riesgo(t, hoy) == "En Riesgo"]
+
+    if atrasadas_l:
         st.markdown("---")
         st.markdown("### 🚨 Alertas de atraso")
-        for t in atrasadas_lista:
+        for t in atrasadas_l:
             dias_atras = (hoy - t["fecha_fin"]).days
+            hitos_info = ""
+            if t.get("hitos"):
+                c = sum(1 for h in t["hitos"] if h.get("completado"))
+                hitos_info = f" | 🏁 Hitos: {c}/{len(t['hitos'])}"
             st.error(
-                f"**{t['nombre']}** — atrasada {dias_atras} día(s) "
-                f"| Avance: {t.get('avance', 0)}% "
-                f"| Recurso: {t.get('recurso', '—')}"
+                f"**{t['nombre']}** — {dias_atras}d atrasada | "
+                f"Avance: {calcular_avance_tarea(t)}%{hitos_info} | "
+                f"👤 {t.get('recurso','—')}"
             )
 
-    # ── Alertas en riesgo ─────────────────────────────────────────────────────
-    en_riesgo_lista = [t for t in tareas
-                       if _calcular_estado_riesgo(t, hoy) == "En Riesgo"]
-    if en_riesgo_lista:
-        if not atrasadas_lista:
+    if en_riesgo_l:
+        if not atrasadas_l:
             st.markdown("---")
-        st.markdown("### ⚠️ Tareas en riesgo de atraso")
-        for t in en_riesgo_lista:
-            duracion        = (t["fecha_fin"] - t["fecha_inicio"]).days or 1
-            transcurrido    = (hoy - t["fecha_inicio"]).days
-            avance_esperado = round((transcurrido / duracion) * 100)
-            brecha          = avance_esperado - t.get("avance", 0)
+        st.markdown("### ⚠️ Tareas en riesgo")
+        for t in en_riesgo_l:
+            dur      = (t["fecha_fin"] - t["fecha_inicio"]).days or 1
+            trans    = (hoy - t["fecha_inicio"]).days
+            esp      = round((trans / dur) * 100)
+            avance_r = calcular_avance_tarea(t)
+            brecha   = esp - avance_r
+            hitos_info = ""
+            if t.get("hitos"):
+                c = sum(1 for h in t["hitos"] if h.get("completado"))
+                hitos_info = f" | 🏁 Hitos: {c}/{len(t['hitos'])}"
             st.warning(
-                f"**{t['nombre']}** — real: {t.get('avance', 0)}% "
-                f"vs esperado: {avance_esperado}% "
-                f"| Brecha: **{brecha} puntos** "
-                f"| Recurso: {t.get('recurso', '—')} "
-                f"| Fin: {t['fecha_fin'].strftime('%d/%m/%Y')}"
+                f"**{t['nombre']}** — real: {avance_r}% vs esperado: {esp}% "
+                f"| Brecha: **{brecha}pts**{hitos_info} | "
+                f"👤 {t.get('recurso','—')} | "
+                f"Fin: {t['fecha_fin'].strftime('%d/%m/%Y')}"
             )
 
     # ── Exportar ──────────────────────────────────────────────────────────────
     st.markdown("---")
-    st.markdown("### 📥 Exportar datos")
-    csv = df.to_csv(index=False).encode("utf-8")
+    st.markdown("### 📥 Exportar")
     st.download_button(
-        label="⬇️ Descargar tabla como CSV",
-        data=csv,
-        file_name=f"gantt_{info['nombre'].replace(' ', '_')}.csv",
+        label="⬇️ Descargar CSV",
+        data=df.to_csv(index=False).encode("utf-8"),
+        file_name=f"dashboard_{info['nombre'].replace(' ','_')}.csv",
         mime="text/csv",
     )

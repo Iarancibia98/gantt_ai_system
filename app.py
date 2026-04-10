@@ -1,166 +1,27 @@
 import streamlit as st
- 
+from data import cargar_demo, importar_csv
+from styles import aplicar_estilos, CSS
+
 st.set_page_config(
     page_title="Carta Gantt Inteligente",
     page_icon="📊",
     layout="wide"
 )
- 
+
 # ── Estilos globales ──────────────────────────────────────────────────────────
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
- 
-html, body, [class*="css"] {
-    font-family: 'Space Grotesk', sans-serif;
-}
- 
-/* Fondo oscuro con textura */
-.stApp {
-    background: linear-gradient(135deg, #0a0f1e 0%, #0d1b2a 50%, #0a0f1e 100%);
-    min-height: 100vh;
-}
- 
-/* Sidebar */
-section[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #0d1b2a 0%, #111827 100%);
-    border-right: 1px solid #1e3a5f;
-}
- 
-section[data-testid="stSidebar"] .stRadio label {
-    color: #94a3b8 !important;
-    font-size: 0.9rem;
-    padding: 6px 0;
-    cursor: pointer;
-    transition: color 0.2s;
-}
- 
-section[data-testid="stSidebar"] .stRadio label:hover {
-    color: #38bdf8 !important;
-}
- 
-/* Títulos */
-h1, h2, h3 {
-    color: #f0f9ff !important;
-    font-weight: 700 !important;
-}
- 
-/* Texto general */
-p, li, .stMarkdown {
-    color: #cbd5e1 !important;
-}
- 
-/* Cards */
-.card {
-    background: rgba(30, 58, 95, 0.3);
-    border: 1px solid rgba(56, 189, 248, 0.2);
-    border-radius: 12px;
-    padding: 1.5rem;
-    margin-bottom: 1rem;
-    backdrop-filter: blur(10px);
-}
- 
-/* Botones primarios */
-.stButton > button {
-    background: linear-gradient(135deg, #0ea5e9, #6366f1);
-    color: white;
-    border: none;
-    border-radius: 8px;
-    padding: 0.6rem 1.5rem;
-    font-family: 'Space Grotesk', sans-serif;
-    font-weight: 600;
-    font-size: 0.9rem;
-    transition: all 0.3s ease;
-    box-shadow: 0 4px 15px rgba(14, 165, 233, 0.3);
-}
- 
-.stButton > button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(14, 165, 233, 0.5);
-}
- 
-/* Inputs */
-.stTextInput input, .stNumberInput input, .stSelectbox select, .stDateInput input {
-    background: rgba(15, 30, 50, 0.8) !important;
-    border: 1px solid #1e3a5f !important;
-    border-radius: 8px !important;
-    color: #e2e8f0 !important;
-}
- 
-/* Métricas */
-[data-testid="metric-container"] {
-    background: rgba(30, 58, 95, 0.3);
-    border: 1px solid rgba(56, 189, 248, 0.15);
-    border-radius: 10px;
-    padding: 1rem;
-}
- 
-[data-testid="stMetricValue"] {
-    color: #38bdf8 !important;
-    font-family: 'JetBrains Mono', monospace !important;
-    font-size: 1.8rem !important;
-}
- 
-[data-testid="stMetricLabel"] {
-    color: #94a3b8 !important;
-}
- 
-/* DataFrames */
-.stDataFrame {
-    border: 1px solid #1e3a5f !important;
-    border-radius: 8px;
-}
- 
-/* Alertas info */
-.stAlert {
-    background: rgba(14, 165, 233, 0.1) !important;
-    border: 1px solid rgba(14, 165, 233, 0.3) !important;
-    border-radius: 8px !important;
-    color: #bae6fd !important;
-}
- 
-/* Separador */
-hr {
-    border-color: #1e3a5f !important;
-}
- 
-/* Logo sidebar */
-.sidebar-logo {
-    font-family: 'JetBrains Mono', monospace;
-    color: #38bdf8;
-    font-size: 1.1rem;
-    font-weight: 600;
-    padding: 1rem 0;
-    letter-spacing: -0.5px;
-}
- 
-/* Tag estado */
-.tag {
-    display: inline-block;
-    padding: 3px 10px;
-    border-radius: 20px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-}
-.tag-ok     { background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid #4ade8040; }
-.tag-warn   { background: rgba(250,204,21,0.15); color: #facc15; border: 1px solid #facc1540; }
-.tag-danger { background: rgba(239,68,68,0.15);  color: #f87171; border: 1px solid #f8717140; }
-.tag-idle   { background: rgba(148,163,184,0.15);color: #94a3b8; border: 1px solid #94a3b840; }
-</style>
-""", unsafe_allow_html=True)
- 
+aplicar_estilos()
+
 # ── Estado global ─────────────────────────────────────────────────────────────
 if "proyectos" not in st.session_state:
-    st.session_state.proyectos = {}   # { nombre: {info, tareas} }
+    st.session_state.proyectos = {}
 if "proyecto_activo" not in st.session_state:
     st.session_state.proyecto_activo = None
- 
+
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown('<div class="sidebar-logo">📊 GanttAI</div>', unsafe_allow_html=True)
     st.markdown("---")
- 
+
     pagina = st.radio("Navegación", [
         "🏠 Inicio",
         "➕ Nuevo Proyecto",
@@ -168,12 +29,81 @@ with st.sidebar:
         "📊 Dashboard",
         "🧠 Análisis IA",
     ], label_visibility="collapsed")
- 
-    # Selector de proyecto activo
+
+    # ── Cargar proyecto demo ──────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown(
+        "<span class='demo-badge'>Demo</span> "
+        "<span style='color:#E2E8F0;font-size:0.85rem;font-weight:600;"
+        "margin-left:6px;'>Proyectos de ejemplo</span>",
+        unsafe_allow_html=True
+    )
+    st.markdown("<div style='margin-top:8px;'></div>", unsafe_allow_html=True)
+
+    DEMOS = {
+        "Demo Minería":  ("demo_mineria",  "Optimización Operacional Mina Subterránea Norte", "Carlos Romero",    "Operaciones",        "01/04/2026", "30/06/2026", "Alta",  "Mejora del ciclo de extracción y modernización SCADA."),
+        "Demo Retail":   ("demo_retail",   "Renovación Temporada Invierno 2026",               "Valentina Torres", "Comercial / Ventas", "05/04/2026", "30/04/2026", "Media", "Reconfiguración de tiendas y lanzamiento campaña invierno."),
+        "Demo Salud":    ("demo_medicina", "Digitalización Clínica y Acreditación 2026",       "Dra. Paula Soto",  "Salud / Medicina",   "01/04/2026", "30/06/2026", "Alta",  "Implementación HIS y preparación acreditación Joint Commission."),
+    }
+
+    demo_opcion = st.selectbox(
+        "demo",
+        ["— Selecciona —"] + list(DEMOS.keys()),
+        key="demo_selector",
+        label_visibility="collapsed"
+    )
+
+    if st.button("⚡ Cargar demo", use_container_width=True):
+        if demo_opcion == "— Selecciona —":
+            st.warning("Selecciona un demo primero.")
+        else:
+            archivo_csv, nombre_proy, responsable, area, fi, ff, prioridad, desc = DEMOS[demo_opcion]
+
+            from datetime import datetime
+            import io
+
+            fi_date = datetime.strptime(fi, "%d/%m/%Y").date()
+            ff_date = datetime.strptime(ff, "%d/%m/%Y").date()
+
+            df  = cargar_demo(archivo_csv)
+            raw = io.BytesIO(df.to_csv(index=False).encode("utf-8"))
+            tareas, errores = importar_csv(raw)
+
+            if tareas:
+                # 🔥 Cambio: ahora SIEMPRE sobreescribe (permite recargar limpio)
+                st.session_state.proyectos[nombre_proy] = {
+                    "info": {
+                        "nombre":       nombre_proy,
+                        "responsable":  responsable,
+                        "area":         area,
+                        "fecha_inicio": fi_date,
+                        "fecha_fin":    ff_date,
+                        "prioridad":    prioridad,
+                        "descripcion":  desc,
+                    },
+                    "tareas": tareas,
+                }
+
+                st.session_state.proyecto_activo = nombre_proy
+
+                st.success(f"✅ {demo_opcion} cargado.")
+                st.toast(f"{demo_opcion} listo 🚀", icon="✅")
+                st.rerun()
+            else:
+                st.error("Error al cargar el demo.")
+                for e in errores:
+                    st.warning(e)
+
+    # ── Selector de proyecto activo ───────────────────────────────────────────
     proyectos_lista = list(st.session_state.proyectos.keys())
     if proyectos_lista:
         st.markdown("---")
-        st.markdown("**Proyecto activo**")
+        st.markdown(
+            "<span style='color:#A0AEC0;font-size:0.75rem;text-transform:uppercase;"
+            "letter-spacing:0.5px;'>Proyecto activo</span>",
+            unsafe_allow_html=True
+        )
+
         seleccion = st.selectbox(
             "proyecto",
             proyectos_lista,
@@ -181,29 +111,29 @@ with st.sidebar:
                   if st.session_state.proyecto_activo in proyectos_lista else 0,
             label_visibility="collapsed"
         )
+
         st.session_state.proyecto_activo = seleccion
- 
+
     st.markdown("---")
     st.caption("v1.0 · Carta Gantt Inteligente")
- 
+
 # ── Enrutador de páginas ──────────────────────────────────────────────────────
 if pagina == "🏠 Inicio":
     from data import pagina_inicio
     pagina_inicio()
- 
+
 elif pagina == "➕ Nuevo Proyecto":
     from data import pagina_nuevo_proyecto
     pagina_nuevo_proyecto()
- 
+
 elif pagina == "📅 Ver Gantt":
     from gantt import pagina_gantt
     pagina_gantt()
- 
+
 elif pagina == "📊 Dashboard":
     from dashboard import pagina_dashboard
     pagina_dashboard()
- 
+
 elif pagina == "🧠 Análisis IA":
     from storytelling import pagina_storytelling
     pagina_storytelling()
- 

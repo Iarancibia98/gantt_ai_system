@@ -14,9 +14,27 @@ def get_proyecto():
     return None
 
 
+def cargar_demo(nombre):
+    return pd.read_csv(f"data/{nombre}.csv")
+
+
+# ── 1. Calcula el avance real (hitos o manual) ────────────────────────────────
+def calcular_avance_tarea(tarea: dict) -> int:
+    """
+    Si la tarea tiene hitos: avance = hitos completados / total * 100.
+    Si no tiene hitos: usa el avance manual guardado.
+    """
+    hitos = tarea.get("hitos", [])
+    if hitos:
+        completados = sum(1 for h in hitos if h.get("completado"))
+        return round((completados / len(hitos)) * 100)
+    return tarea.get("avance", 0)
+
+
+# ── 2. Usa calcular_avance_tarea internamente ─────────────────────────────────
 def calcular_estado_tarea(tarea: dict, hoy: date) -> str:
-    """Retorna el estado de una tarea: Completada / En Progreso / En Riesgo / Atrasada / Pendiente."""
-    avance = tarea.get("avance", 0)
+    """Retorna el estado: Completada / En Progreso / En Riesgo / Atrasada / Pendiente."""
+    avance = calcular_avance_tarea(tarea)
     fin    = tarea.get("fecha_fin")
     inicio = tarea.get("fecha_inicio")
 
@@ -24,9 +42,6 @@ def calcular_estado_tarea(tarea: dict, hoy: date) -> str:
         return "Completada"
     if isinstance(fin, date) and fin < hoy and avance < 100:
         return "Atrasada"
-    # Inicio futuro: la tarea no puede haber comenzado
-    if isinstance(inicio, date) and inicio > hoy:
-        return "Pendiente"
     if avance > 0:
         if isinstance(inicio, date) and isinstance(fin, date):
             duracion     = (fin - inicio).days or 1
@@ -48,21 +63,32 @@ def calcular_duracion(tarea: dict) -> int:
 
 
 def avance_total_proyecto(tareas: list) -> float:
-    """Promedio ponderado del avance (por duración)."""
-    if not tareas:
-        return 0.0
-    total_dias = sum(calcular_duracion(t) for t in tareas)
-    if total_dias == 0:
-        return 0.0
-    ponderado = sum(t.get("avance", 0) * calcular_duracion(t) for t in tareas)
-    return round(ponderado / total_dias, 1)
+    total_hitos = 0
+    hitos_completados = 0
+
+    for t in tareas:
+        hitos = t.get("hitos", [])
+
+        if hitos:
+            total_hitos += len(hitos)
+            hitos_completados += sum(1 for h in hitos if h.get("completado"))
+        else:
+            # fallback si no hay hitos
+            total_hitos += 1
+            hitos_completados += t.get("avance", 0) / 100
+
+    if total_hitos == 0:
+        return 0
+
+    return round((hitos_completados / total_hitos) * 100, 1)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # IMPORTAR CSV
 # ─────────────────────────────────────────────────────────────────────────────
 COLUMNAS_REQUERIDAS = {"nombre", "recurso", "area", "fecha_inicio", "fecha_fin", "avance"}
-AREAS_VALIDAS       = [    "Operaciones",
+AREAS_VALIDAS = [
+    "Operaciones",
     "Logística / Supply Chain",
     "TI / Tecnología",
     "Ingeniería / Proyectos",
@@ -70,8 +96,9 @@ AREAS_VALIDAS       = [    "Operaciones",
     "Comercial / Ventas",
     "Mantenimiento",
     "RRHH / Administración",
-    "Otro"]
-FORMATOS_FECHA      = ["%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"]
+    "Otro",
+]
+FORMATOS_FECHA = ["%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"]
 
 
 def _parsear_fecha(valor: str) -> date | None:
@@ -91,10 +118,25 @@ def _normalizar_area(valor: str) -> str:
     return "Otro"
 
 
+def _parsear_hitos(valor) -> list[dict]:
+    """
+    Convierte 'Hito 1, Hito 2, Hito 3' en lista de dicts.
+    Retorna [] si el valor está vacío o es NaN.
+    """
+    if not valor or str(valor).strip() in ("", "nan", "NaN"):
+        return []
+    return [
+        {"nombre": h.strip(), "completado": False}
+        for h in str(valor).split(",")
+        if h.strip()
+    ]
+
+
 def importar_csv(archivo) -> tuple[list[dict], list[str]]:
     """
     Lee un archivo CSV y retorna (tareas_validas, errores).
     Acepta encoding utf-8, utf-8-sig y latin-1.
+    Columna opcional: hitos (separados por coma).
     """
     tareas  = []
     errores = []
@@ -141,12 +183,40 @@ def importar_csv(archivo) -> tuple[list[dict], list[str]]:
             errores.append(f"Fila {fila} ({nombre}): fecha_fin anterior a fecha_inicio, se omite.")
             continue
 
-        try:
-            avance = int(float(str(row.get("avance", 0)).replace("%", "").strip()))
-            avance = max(0, min(100, avance))
-        except ValueError:
-            errores.append(f"Fila {fila} ({nombre}): avance inválido — '{row.get('avance')}', se asigna 0.")
-            avance = 0
+        # ── Hitos: columna opcional ───────────────────────────────────────────
+        hitos = _parsear_hitos(row.get("hitos", ""))
+        avance = 0
+
+        # ── Avance: ignorado si hay hitos (se calcula por checkboxes) ─────────
+        if hitos:
+            try:
+                avance_csv = int(float(str(row.get("avance", 0)).replace("%", "").strip()))
+            except:
+                avance_csv = 0
+
+            # 🔥 Si venía en 100%, marcar todos los hitos automáticamente
+            if avance_csv == 100:
+                for h in hitos:
+                    h["completado"] = True
+                avance = 100
+            else:
+                avance = 0
+        # ── Caso 2: SIN hitos ────────────────────────────────────────────────
+        else:
+            raw_avance = row.get("avance", 0)
+
+            try:
+                if raw_avance is None or str(raw_avance).strip() == "":
+                    raise ValueError
+
+                avance = int(float(str(raw_avance).replace("%", "").strip()))
+                avance = max(0, min(100, avance))
+
+            except:
+                errores.append(
+                    f"Fila {fila} ({nombre}): avance inválido — '{raw_avance}', se asigna 0."
+                )
+                avance = 0
 
         tareas.append({
             "nombre":       nombre,
@@ -156,6 +226,7 @@ def importar_csv(archivo) -> tuple[list[dict], list[str]]:
             "fecha_fin":    fecha_fin,
             "avance":       avance,
             "descripcion":  str(row.get("descripcion", "")).strip(),
+            "hitos":        hitos,
         })
 
     return tareas, errores
@@ -186,10 +257,10 @@ def pagina_inicio():
                 for p in st.session_state.proyectos.values()) / n_proyectos, 1
         )
 
-    col1.metric("📁 Proyectos", n_proyectos)
-    col2.metric("📋 Tareas totales", n_tareas)
+    col1.metric("📁 Proyectos",        n_proyectos)
+    col2.metric("📋 Tareas totales",   n_tareas)
     col3.metric("⚠️ Tareas atrasadas", atrasadas)
-    col4.metric("📈 Avance promedio", f"{avance_prom}%")
+    col4.metric("📈 Avance promedio",  f"{avance_prom}%")
 
     st.markdown("---")
 
@@ -230,22 +301,14 @@ def pagina_nuevo_proyecto():
     st.markdown("Completa la información del proyecto y agrega las tareas.")
     st.markdown("---")
 
-    # ── Información general del proyecto ──────────────────────────────────────
+    # ── Información general ───────────────────────────────────────────────────
     with st.expander("📁 Información general del proyecto", expanded=True):
         col1, col2 = st.columns(2)
         with col1:
-            nombre_proyecto = st.text_input("Nombre del proyecto *", placeholder="Ej: Distribución Zona Norte")
+            nombre_proyecto = st.text_input("Nombre del proyecto *",
+                                             placeholder="Ej: Distribución Zona Norte")
             responsable     = st.text_input("Responsable *", placeholder="Ej: Juan Pérez")
-            area            = st.selectbox("Área / Departamento",
-                                               ["Operaciones",
-                                                "Logística / Supply Chain",   # unificar estos dos
-                                                "TI / Tecnología",
-                                                "Ingeniería / Proyectos",     # reemplaza "Proyectos" con más contexto
-                                                "Salud / Medicina",           # cubre tu caso médico
-                                                "Comercial / Ventas",
-                                                "Mantenimiento",              # muy relevante en minería y retail
-                                                "RRHH / Administración",
-                                                "Otro"])
+            area            = st.selectbox("Área / Departamento", AREAS_VALIDAS)
         with col2:
             fecha_inicio_proy = st.date_input("Fecha de inicio", value=date.today())
             fecha_fin_proy    = st.date_input("Fecha de término estimada",
@@ -261,7 +324,7 @@ def pagina_nuevo_proyecto():
     if "tareas_form" not in st.session_state:
         st.session_state.tareas_form = []
 
-    # ── IMPORTAR DESDE CSV ────────────────────────────────────────────────────
+    # ── Importar desde CSV ────────────────────────────────────────────────────
     with st.expander("📂 Importar tareas desde CSV", expanded=False):
         st.markdown("""
 **Formato requerido** — columnas obligatorias:
@@ -275,7 +338,7 @@ def pagina_nuevo_proyecto():
 | `fecha_fin` | 11/04/2026 | Formato DD/MM/YYYY |
 | `avance` | 60 | Número entre 0 y 100 |
 
-Columna opcional: `descripcion`.
+Columnas opcionales: `descripcion`, `hitos` (separados por coma).
 """)
         plantilla = pd.DataFrame([{
             "nombre":       "Ejemplo tarea 1",
@@ -285,6 +348,7 @@ Columna opcional: `descripcion`.
             "fecha_fin":    "11/04/2026",
             "avance":       "0",
             "descripcion":  "Descripción opcional",
+            "hitos":        "Diseño, Desarrollo, Pruebas, Entrega",
         }])
         st.download_button(
             label="⬇️ Descargar plantilla CSV",
@@ -293,8 +357,8 @@ Columna opcional: `descripcion`.
             mime="text/csv",
         )
 
-        archivo_csv = st.file_uploader("Selecciona tu archivo CSV", type=["csv"], key="csv_upload")
-
+        archivo_csv = st.file_uploader("Selecciona tu archivo CSV",
+                                        type=["csv"], key="csv_upload")
         if archivo_csv:
             tareas_importadas, errores_csv = importar_csv(archivo_csv)
 
@@ -311,16 +375,19 @@ Columna opcional: `descripcion`.
                     "Área":    t["area"],
                     "Inicio":  t["fecha_inicio"].strftime("%d/%m/%Y"),
                     "Fin":     t["fecha_fin"].strftime("%d/%m/%Y"),
-                    "Avance":  f"{t['avance']}%",
+                    "Hitos":   len(t.get("hitos", [])) or "—",
+                    "Avance":  f"{calcular_avance_tarea(t)}%",
                     "Estado":  calcular_estado_tarea(t, hoy),
                 } for t in tareas_importadas])
 
                 st.success(f"✅ {len(tareas_importadas)} tarea(s) listas para importar.")
                 st.dataframe(df_prev, use_container_width=True, hide_index=True)
 
-                if st.button("✅ Confirmar importación", type="primary", use_container_width=True):
+                if st.button("✅ Confirmar importación", type="primary",
+                              use_container_width=True):
                     nombres_existentes = {t["nombre"] for t in st.session_state.tareas_form}
-                    nuevas     = [t for t in tareas_importadas if t["nombre"] not in nombres_existentes]
+                    nuevas     = [t for t in tareas_importadas
+                                  if t["nombre"] not in nombres_existentes]
                     duplicadas = len(tareas_importadas) - len(nuevas)
                     st.session_state.tareas_form.extend(nuevas)
                     msg = f"✅ {len(nuevas)} tarea(s) importadas."
@@ -331,22 +398,34 @@ Columna opcional: `descripcion`.
             elif not errores_csv:
                 st.error("El CSV no contiene tareas válidas.")
 
-    # ── AGREGAR MANUALMENTE ───────────────────────────────────────────────────
-    with st.expander("➕ Agregar tarea manualmente", expanded=len(st.session_state.tareas_form) == 0):
+    # ── Agregar manualmente ───────────────────────────────────────────────────
+    with st.expander("➕ Agregar tarea manualmente",
+                      expanded=len(st.session_state.tareas_form) == 0):
         c1, c2, c3 = st.columns(3)
         with c1:
-            nombre_tarea  = st.text_input("Nombre de la tarea *", key="nt")
-            recurso       = st.text_input("Recurso / Persona asignada", key="rec",
-                                           placeholder="Ej: María González")
+            nombre_tarea = st.text_input("Nombre de la tarea *", key="nt")
+            recurso      = st.text_input("Recurso / Persona asignada", key="rec",
+                                          placeholder="Ej: María González")
         with c2:
-            fecha_ini_t   = st.date_input("Fecha inicio tarea", value=date.today(), key="fi")
-            fecha_fin_t   = st.date_input("Fecha fin tarea",
-                                           value=date.today() + timedelta(days=7), key="ff")
+            fecha_ini_t  = st.date_input("Fecha inicio tarea", value=date.today(), key="fi")
+            fecha_fin_t  = st.date_input("Fecha fin tarea",
+                                          value=date.today() + timedelta(days=7), key="ff")
         with c3:
-            area_tarea    = st.selectbox("Área de la tarea",
-                                          ["Operaciones", "Logística", "Minería",
-                                           "Supply Chain", "Proyectos", "TI", "Otro"], key="at")
-            avance_tarea  = st.slider("% Avance inicial", 0, 100, 0, key="av")
+            area_tarea   = st.selectbox("Área de la tarea", AREAS_VALIDAS, key="at")
+            avance_tarea = st.slider("% Avance inicial", 0, 100, 0, key="av")
+
+        hitos_input = st.text_input(
+            "Hitos (separados por coma) — opcional",
+            placeholder="Ej: Diseño, Desarrollo, Pruebas, Entrega",
+            key="hitos_t",
+            help="Si defines hitos, el avance se calculará automáticamente según los que marques.",
+        )
+        if hitos_input.strip():
+            hitos_preview = [h.strip() for h in hitos_input.split(",") if h.strip()]
+            st.caption(
+                f"✅ {len(hitos_preview)} hito(s) detectados — "
+                f"cada uno valdrá **{round(100 / len(hitos_preview), 1)}%**"
+            )
 
         descripcion_t = st.text_input("Descripción de la tarea (opcional)", key="dt")
 
@@ -356,22 +435,30 @@ Columna opcional: `descripcion`.
             elif fecha_fin_t < fecha_ini_t:
                 st.error("La fecha de fin no puede ser anterior al inicio.")
             else:
-                if avance_tarea > 0 and fecha_ini_t > date.today():
+                hitos_parseados = _parsear_hitos(hitos_input)
+                avance_final    = 0 if hitos_parseados else avance_tarea
+
+                if avance_final > 0 and fecha_ini_t > date.today():
                     st.warning(
-                        f"⚠️ La tarea tiene {avance_tarea}% de avance pero su inicio "
+                        f"⚠️ La tarea tiene {avance_final}% de avance pero su inicio "
                         f"es {fecha_ini_t.strftime('%d/%m/%Y')} (fecha futura). "
                         "Verifica si las fechas o el avance son correctos."
                     )
+
                 st.session_state.tareas_form.append({
                     "nombre":       nombre_tarea,
                     "recurso":      recurso,
                     "area":         area_tarea,
                     "fecha_inicio": fecha_ini_t,
                     "fecha_fin":    fecha_fin_t,
-                    "avance":       avance_tarea,
+                    "avance":       avance_final,
                     "descripcion":  descripcion_t,
+                    "hitos":        hitos_parseados,
                 })
-                st.success(f"Tarea **{nombre_tarea}** agregada.")
+                st.success(
+                    f"Tarea **{nombre_tarea}** agregada"
+                    + (f" con {len(hitos_parseados)} hitos." if hitos_parseados else ".")
+                )
                 st.rerun()
 
     # ── Lista de tareas cargadas ──────────────────────────────────────────────
@@ -386,7 +473,8 @@ Columna opcional: `descripcion`.
             "Inicio":   t["fecha_inicio"].strftime("%d/%m/%Y"),
             "Fin":      t["fecha_fin"].strftime("%d/%m/%Y"),
             "Duración": f"{calcular_duracion(t)} días",
-            "Avance":   f"{t['avance']}%",
+            "Hitos":    len(t.get("hitos", [])) or "—",
+            "Avance":   f"{calcular_avance_tarea(t)}%",
             "Estado":   calcular_estado_tarea(t, hoy),
         } for t in st.session_state.tareas_form])
 
@@ -394,14 +482,17 @@ Columna opcional: `descripcion`.
 
         col_del1, col_del2 = st.columns([3, 1])
         with col_del1:
-            tarea_a_eliminar = st.selectbox("Eliminar tarea",
-                                             [t["nombre"] for t in st.session_state.tareas_form],
-                                             key="del_t")
+            tarea_a_eliminar = st.selectbox(
+                "Eliminar tarea",
+                [t["nombre"] for t in st.session_state.tareas_form],
+                key="del_t",
+            )
         with col_del2:
             st.markdown("<br>", unsafe_allow_html=True)
             if st.button("🗑️ Eliminar"):
                 st.session_state.tareas_form = [
-                    t for t in st.session_state.tareas_form if t["nombre"] != tarea_a_eliminar
+                    t for t in st.session_state.tareas_form
+                    if t["nombre"] != tarea_a_eliminar
                 ]
                 st.rerun()
 
@@ -443,14 +534,16 @@ Columna opcional: `descripcion`.
         st.markdown("---")
         st.markdown("### ✏️ Agregar tarea a proyecto existente")
 
-        proy_editar = st.selectbox("Selecciona el proyecto",
-                                    list(st.session_state.proyectos.keys()),
-                                    key="proy_ed")
+        proy_editar = st.selectbox(
+            "Selecciona el proyecto",
+            list(st.session_state.proyectos.keys()),
+            key="proy_ed",
+        )
 
         # Importar CSV a proyecto existente
         with st.expander("📂 Importar tareas desde CSV al proyecto existente"):
-            archivo_csv2 = st.file_uploader("Selecciona tu archivo CSV", type=["csv"], key="csv_upload2")
-
+            archivo_csv2 = st.file_uploader("Selecciona tu archivo CSV",
+                                             type=["csv"], key="csv_upload2")
             if archivo_csv2:
                 tareas_imp2, errores_csv2 = importar_csv(archivo_csv2)
 
@@ -465,15 +558,19 @@ Columna opcional: `descripcion`.
                         "Recurso": t["recurso"],
                         "Inicio":  t["fecha_inicio"].strftime("%d/%m/%Y"),
                         "Fin":     t["fecha_fin"].strftime("%d/%m/%Y"),
-                        "Avance":  f"{t['avance']}%",
+                        "Hitos":   len(t.get("hitos", [])) or "—",
+                        "Avance":  f"{calcular_avance_tarea(t)}%",
                         "Estado":  calcular_estado_tarea(t, hoy),
                     } for t in tareas_imp2])
                     st.success(f"✅ {len(tareas_imp2)} tarea(s) listas para importar.")
                     st.dataframe(df_prev2, use_container_width=True, hide_index=True)
 
-                    if st.button("✅ Confirmar importación al proyecto", type="primary", use_container_width=True):
-                        existentes  = {t["nombre"] for t in st.session_state.proyectos[proy_editar]["tareas"]}
-                        nuevas2     = [t for t in tareas_imp2 if t["nombre"] not in existentes]
+                    if st.button("✅ Confirmar importación al proyecto",
+                                  type="primary", use_container_width=True):
+                        existentes  = {t["nombre"] for t in
+                                       st.session_state.proyectos[proy_editar]["tareas"]}
+                        nuevas2     = [t for t in tareas_imp2
+                                       if t["nombre"] not in existentes]
                         duplicadas2 = len(tareas_imp2) - len(nuevas2)
                         st.session_state.proyectos[proy_editar]["tareas"].extend(nuevas2)
                         msg = f"✅ {len(nuevas2)} tarea(s) importadas a **{proy_editar}**."
@@ -486,15 +583,27 @@ Columna opcional: `descripcion`.
         with st.expander("➕ Agregar tarea manualmente al proyecto seleccionado"):
             c1, c2, c3 = st.columns(3)
             with c1:
-                nt2   = st.text_input("Nombre tarea", key="nt2")
-                rec2  = st.text_input("Recurso", key="rec2")
+                nt2  = st.text_input("Nombre tarea", key="nt2")
+                rec2 = st.text_input("Recurso", key="rec2")
             with c2:
-                fi2   = st.date_input("Inicio", value=date.today(), key="fi2")
-                ff2   = st.date_input("Fin", value=date.today() + timedelta(days=7), key="ff2")
+                fi2  = st.date_input("Inicio", value=date.today(), key="fi2")
+                ff2  = st.date_input("Fin", value=date.today() + timedelta(days=7), key="ff2")
             with c3:
-                at2   = st.selectbox("Área", ["Operaciones", "Logística", "Minería",
-                                               "Supply Chain", "Proyectos", "TI", "Otro"], key="at2")
-                av2   = st.slider("% Avance", 0, 100, 0, key="av2")
+                at2  = st.selectbox("Área", AREAS_VALIDAS, key="at2")
+                av2  = st.slider("% Avance", 0, 100, 0, key="av2")
+
+            hitos_input2 = st.text_input(
+                "Hitos (separados por coma) — opcional",
+                placeholder="Ej: Diseño, Desarrollo, Pruebas, Entrega",
+                key="hitos_t2",
+                help="Si defines hitos, el avance se calculará automáticamente.",
+            )
+            if hitos_input2.strip():
+                hitos_prev2 = [h.strip() for h in hitos_input2.split(",") if h.strip()]
+                st.caption(
+                    f"✅ {len(hitos_prev2)} hito(s) — "
+                    f"cada uno valdrá **{round(100 / len(hitos_prev2), 1)}%**"
+                )
 
             if st.button("✅ Agregar al proyecto"):
                 if not nt2:
@@ -502,19 +611,28 @@ Columna opcional: `descripcion`.
                 elif ff2 < fi2:
                     st.error("Fecha fin anterior al inicio.")
                 else:
-                    if av2 > 0 and fi2 > date.today():
+                    hitos_parseados2 = _parsear_hitos(hitos_input2)
+                    avance_final2    = 0 if hitos_parseados2 else av2
+
+                    if avance_final2 > 0 and fi2 > date.today():
                         st.warning(
-                            f"⚠️ La tarea tiene {av2}% de avance pero su inicio "
+                            f"⚠️ La tarea tiene {avance_final2}% de avance pero su inicio "
                             f"es {fi2.strftime('%d/%m/%Y')} (fecha futura)."
                         )
+
                     st.session_state.proyectos[proy_editar]["tareas"].append({
                         "nombre":       nt2,
                         "recurso":      rec2,
                         "area":         at2,
                         "fecha_inicio": fi2,
                         "fecha_fin":    ff2,
-                        "avance":       av2,
+                        "avance":       avance_final2,
                         "descripcion":  "",
+                        "hitos":        hitos_parseados2,
                     })
-                    st.success(f"Tarea **{nt2}** agregada a **{proy_editar}**.")
+                    st.success(
+                        f"Tarea **{nt2}** agregada a **{proy_editar}**"
+                        + (f" con {len(hitos_parseados2)} hitos."
+                           if hitos_parseados2 else ".")
+                    )
                     st.rerun()

@@ -10,7 +10,7 @@ load_dotenv()
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIG GEMINI
 # ─────────────────────────────────────────────────────────────────────────────
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "") or os.getenv("GEMINI_API_KEY", "")
 GEMINI_BASE    = "https://generativelanguage.googleapis.com/v1beta/models/"
 GEMINI_MODELS  = [
     "gemini-2.5-flash:generateContent",

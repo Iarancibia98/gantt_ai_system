@@ -116,6 +116,14 @@ with st.sidebar:
 
     st.markdown("---")
     st.caption("v1.0 · Carta Gantt Inteligente")
+    st.markdown(
+        "<div style='color:#718096;font-size:0.72rem;padding:4px 0;'>"
+        "by Iván Arancibia Bruna · "
+        "<a href='https://www.linkedin.com/in/ivan-arancibia-bruna/' target='_blank' "
+        "style='color:#718096;text-decoration:underline;'>LinkedIn ↗</a>"
+        "</div>",
+        unsafe_allow_html=True
+    )
 
 # ── Enrutador de páginas ──────────────────────────────────────────────────────
 if pagina == "🏠 Inicio":

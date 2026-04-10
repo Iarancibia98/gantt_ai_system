@@ -214,20 +214,26 @@ p, li, .stMarkdown {
 /* ── Botones ────────────────────────────────────────────────────────── */
 .stButton > button {
     background: linear-gradient(135deg, #6F42C1, #007BFF) !important;
-    color: white !important;
+    color: #FFFFFF !important;
     border: none !important;
     border-radius: 7px !important;
     padding: 0.5rem 1.25rem !important;
     font-family: 'DM Sans', sans-serif !important;
-    font-weight: 600 !important;
+    font-weight: 700 !important;
     font-size: 0.875rem !important;
     transition: all 0.2s ease !important;
     box-shadow: 0 2px 8px rgba(111,66,193,0.25) !important;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.4) !important;
+    letter-spacing: 0.2px !important;
 }
 
 .stButton > button:hover {
     transform: translateY(-1px) !important;
     box-shadow: 0 5px 15px rgba(111,66,193,0.4) !important;
+}
+.stButton > button p {
+    color: #FFFFFF !important;
+    font-weight: 700 !important;
 }
 
 /* ── Inputs ─────────────────────────────────────────────────────────── */

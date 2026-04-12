@@ -38,11 +38,11 @@ def _llamar_gemini(prompt: str, max_tokens: int = 2000) -> str | None:
                     json={
                         "contents": [{"parts": [{"text": prompt}]}],
                         "generationConfig": {
-                        "temperature": 0.4,
-                        "maxOutputTokens": max_tokens,
-                        "topP": 0.9,
-                        "topK": 40,
-                    },
+                            "temperature": 0.4,
+                            "maxOutputTokens": max_tokens,
+                            "topP": 0.9,
+                            "topK": 40,
+                        },
                     },
                     timeout=30,
                 )
@@ -83,7 +83,7 @@ def _llamar_gemini(prompt: str, max_tokens: int = 2000) -> str | None:
 def analizar_proyecto(proyecto: dict) -> dict:
     hoy    = date.today()
     tareas = proyecto["tareas"]
-    avance = avance_total_proyecto(tareas)   # ya usa calcular_avance_tarea internamente
+    avance = avance_total_proyecto(tareas)
  
     atrasadas, en_progreso, completadas, pendientes = [], [], [], []
     carga_recursos: dict[str, list] = {}
@@ -121,7 +121,6 @@ def analizar_proyecto(proyecto: dict) -> dict:
         total         = len(tareas_r)
         completadas_r = sum(1 for t in tareas_r if calcular_estado_tarea(t, hoy) == "Completada")
         atrasadas_r   = sum(1 for t in tareas_r if calcular_estado_tarea(t, hoy) == "Atrasada")
-        # ← calcular_avance_tarea respeta hitos si existen
         avance_prom   = sum(calcular_avance_tarea(t) for t in tareas_r) / total if total else 0
         rendimiento_trabajadores[recurso] = {
             "total": total,
@@ -134,7 +133,6 @@ def analizar_proyecto(proyecto: dict) -> dict:
     rendimiento_areas = {}
     for area, tareas_a in carga_areas.items():
         total       = len(tareas_a)
-        # ← calcular_avance_tarea respeta hitos si existen
         avance_prom = sum(calcular_avance_tarea(t) for t in tareas_a) / total if total else 0
         atrasadas_a = sum(1 for t in tareas_a if calcular_estado_tarea(t, hoy) == "Atrasada")
         rendimiento_areas[area] = {
@@ -172,7 +170,6 @@ def _dias_restantes(t: dict, hoy: date) -> str:
  
  
 def _resumen_hitos(t: dict) -> str:
-    """Devuelve '2/4 hitos' si la tarea tiene hitos, cadena vacía si no."""
     hitos = t.get("hitos", [])
     if not hitos:
         return ""
@@ -194,7 +191,6 @@ def _construir_contexto(proyecto: dict, analisis: dict) -> str:
         comp = sum(1 for h in hitos if h.get("completado"))
         return f"{comp}/{len(hitos)} hitos"
 
-    # 🔥 SOLO tareas críticas (esto evita que Gemini se sature)
     tareas_criticas = sorted(
         proyecto["tareas"],
         key=lambda t: (
@@ -242,27 +238,45 @@ def generar_storytelling(proyecto: dict) -> tuple[str, bool]:
     analisis = analizar_proyecto(proyecto)
     ctx      = _construir_contexto(proyecto, analisis)
  
-    prompt = f"""Eres consultor senior de proyectos. Analiza y responde en español.
- 
+    # ── PROMPT EJECUTIVO: formato fijo + contexto experto minero ─────────────
+    prompt = f"""Eres consultor senior especializado en planificación y control de proyectos mineros.
+Analiza los datos y responde en español con criterio operacional y económico.
+
+PRINCIPIOS DE ANÁLISIS MINERO (aplicar siempre):
+- Prioriza el impacto operacional y económico por sobre la descripción de datos.
+- Identifica cuellos de botella en la cadena productiva: tronadura, carga, transporte, procesamiento.
+- Evalúa cómo los atrasos afectan la continuidad operacional y el cumplimiento de producción.
+- Detecta desalineamiento entre planificación y ejecución cuando exista evidencia.
+- Enfócate solo en indicadores críticos — no todos los datos tienen el mismo peso.
+- Prioriza la urgencia: destaca lo que requiere acción inmediata.
+- Propón acciones concretas, no generales.
+- Relaciona el estado del proyecto con impacto en costos, producción o plazos.
+- Analiza el proyecto como un sistema interdependiente: una tarea atrasada afecta a otras.
+- Actúa como consultor que debe tomar decisiones, no como analista que describe datos.
+
 {ctx}
- 
-Responde con estas 3 secciones. Sé directo, usa datos concretos, sin rodeos:
- 
-## 📍 SITUACIÓN
-Estado actual en máximo 60 palabras. Incluye % avance global, tareas completadas/total y días restantes.
- 
-## ⚡ COMPLICACIÓN
-Problemas reales con nombres de tareas/personas. Para cada tarea en riesgo calcula:
-avance actual vs avance esperado (días transcurridos / días totales * 100).
-Si hay tareas con hitos, menciona cuántos hitos pendientes quedan.
-Máximo 60 palabras.
- 
-## 🎯 PLAN DE ACCIÓN
-4 acciones concretas para esta semana (bullets con verbo imperativo).
-Para cada acción indica: persona responsable + tarea + resultado esperado.
-Al final agrega una línea: "Proyección de cierre: [En plazo / En riesgo / Crítico] porque [razón en 1 frase]."
+
+Genera el análisis con EXACTAMENTE este formato. Sé conciso y usa datos concretos del proyecto.
+No uses lenguaje informal. Cada sección respeta el límite indicado.
+
+## 📋 RESUMEN EJECUTIVO
+[3 líneas máximo. Estado actual: % avance, tareas completadas/total, días restantes, nivel de riesgo y tendencia operacional.]
+
+## ⚡ IMPACTO OPERACIONAL Y ECONÓMICO
+[2–3 bullets. Consecuencias concretas sobre producción, costos o plazo si no se actúa.
+Nombra tareas y responsables específicos. Relaciona cada atraso con su efecto en la cadena productiva.]
+
+## ⚠️ RIESGOS CRÍTICOS
+[2–3 bullets. Solo los riesgos que pueden detener la operación o comprometer el plazo.
+Indica severidad estimada. Incluye hitos pendientes si aplica.]
+
+## ✅ ACCIONES RECOMENDADAS
+[4 bullets priorizados por urgencia. Formato estricto:
+Responsable — Acción específica — Resultado esperado — Plazo concreto.]
+
+Proyección de cierre: [En plazo / En riesgo / Crítico] — [razón en 1 frase con datos del proyecto.]
 """
-    respuesta_ia = _llamar_gemini(prompt, max_tokens=3000)
+    respuesta_ia = _llamar_gemini(prompt, max_tokens=2000)
     if respuesta_ia:
         respuesta = respuesta_ia.strip()
 
@@ -295,63 +309,55 @@ def responder_pregunta(proyecto: dict, pregunta: str, historial: list | None = N
             rol = "Usuario" if msg["rol"] == "usuario" else "Asistente"
             historial_texto += f"{rol}: {msg['texto']}\n"
  
-    prompt = f"""Actúa como JEFE DE PLANIFICACIÓN DE MINA en una operación activa.
+    # ── PROMPT PROFESIONAL: contexto experto minero + formato ejecutivo ──────
+    prompt = f"""Eres Jefe de Planificación con experiencia en operaciones mineras de alta complejidad.
+Integras análisis de proyectos con lógica estratégica basada en principios de planificación y control operacional.
 
-Tu rol:
-- Controlar cumplimiento del programa de producción
-- Detectar desviaciones de avance
-- Evaluar riesgos operacionales (ventilación, tronadura, transporte, mantenimiento)
-- Tomar decisiones con números concretos
+PRINCIPIOS DE ANÁLISIS MINERO (aplicar siempre):
+- Prioriza el impacto operacional y económico por sobre la descripción de datos.
+- Identifica cuellos de botella en la cadena productiva: tronadura, carga, transporte, procesamiento.
+- Evalúa cómo los atrasos afectan la continuidad operacional y el cumplimiento de producción.
+- Detecta desalineamiento entre planificación y ejecución cuando exista evidencia.
+- Enfócate solo en indicadores críticos — no todos los datos tienen el mismo peso.
+- Prioriza la urgencia: lo que requiere acción inmediata va primero.
+- Propón acciones concretas, no generales.
+- Relaciona el estado del proyecto con impacto en costos, producción o plazos.
+- Analiza el proyecto como un sistema interdependiente: una tarea atrasada afecta a otras.
+- Actúa como consultor que debe tomar decisiones, no como analista que describe datos.
+- Cuando sea posible, indica si el proyecto es recuperable o no en el plazo actual
+- Si existe una tarea crítica atrasada, destácala explícitamente como riesgo principal
+- Cuando sea posible, indica si el proyecto es recuperable en el plazo actual
 
-REGLAS TÉCNICAS (NO ROMPER):
-- Usa datos reales del proyecto (%, fechas, responsables)
-- Calcula cuando aplique:
-  avance requerido diario = (100 - avance_actual) / días_restantes
-- Si días_restantes <= 0 → tarea no viable
-- Si hay hitos → usa el % real basado en hitos
-- Prioriza continuidad operacional (producción > teoría)
+REGLAS DE CÁLCULO:
+- Usa exclusivamente los datos del proyecto (%, fechas, responsables)
+- Calcula cuando corresponda: avance requerido diario = (100 - avance_actual) / días_restantes
+- Si días_restantes <= 0 → tarea inviable en plazo actual
+- Si hay hitos → calcula % real basado en hitos completados
+- Si existe una tarea crítica atrasada, destácala explícitamente como riesgo principal
 
-REGLAS DE ESTILO (MUY IMPORTANTE):
-- Responde como si estuvieras hablando con un jefe de turno o gerente
-- Usa lenguaje natural, fluido, no formato tabla rígido
-- Puedes usar bullets, pero que se lean como conversación
-- Explica primero la situación, luego el impacto, luego qué hacer
-- Usa frases como:
-  "Mira", "Hoy tenemos un problema", "Si no hacemos esto", "Esto pega directo en..."
-- Evita lenguaje robótico o excesivamente estructurado
-- NO escribas títulos como "Explica la situación actual" o similares
-- Integra todo como narrativa continua, como conversación real
+FORMATO DE RESPUESTA (obligatorio):
+1. Situación actual — datos concretos, máximo 3 líneas
+2. Impacto operacional/económico — qué ocurre si no se actúa
+3. Acciones recomendadas — máximo 4, ordenadas por criticidad (de mayor a menor impacto)
+4. Decisión recomendada — una acción concreta e inmediata de nivel ejecutivo
 
-FORMATO DE RESPUESTA:
-
-1. Explica la situación actual (en lenguaje natural, con datos)
-2. Explica qué va a pasar si no se actúa (impacto real en producción o seguridad)
-3. Acciones concretas (máx 4–5, claras y directas)
-4. Veredicto final en una línea
-5. Termina SIEMPRE con una frase tipo decisión:
-  "Decisión recomendada: ..."
-
-REGLA FINAL:
-- Si debes resumir, reduce análisis, NO las acciones
-
+ESTILO:
+- Lenguaje técnico y profesional
+- Sin frases de relleno ni introductorias
+- Responde directo a la consulta formulada
+- Usa bullets solo cuando mejore la claridad
+- Sé breve y directo: prioriza claridad sobre detalle
+- Evita redundancias y explicaciones innecesarias
 ---
 
 {ctx}
 
 {"=== HISTORIAL ===" + chr(10) + historial_texto if historial_texto else ""}
 
-=== PREGUNTA ===
-{pregunta}
-
-Responde directo, claro y como en una conversación de operación minera.
-
-
-{ctx}
-
-PREGUNTA:
+=== CONSULTA ===
 {pregunta}
 """
-    respuesta_ia = _llamar_gemini(prompt, max_tokens=6000)
+    respuesta_ia = _llamar_gemini(prompt, max_tokens=4000)
     if respuesta_ia:
         respuesta = respuesta_ia.strip()
 
@@ -378,69 +384,58 @@ def _generar_storytelling_local(proyecto: dict, analisis: dict) -> str:
         f"**Proyección:** {a['proyeccion']}\n\n---\n\n"
     )
  
-    texto += "## 📍 ACTO 1 — SITUACIÓN\n"
+    texto += "## 📋 RESUMEN\n"
     texto += (
-        f"El proyecto tiene **{len(proyecto['tareas'])} tareas**: "
-        f"{len(a['completadas'])} completadas, {len(a['en_progreso'])} en progreso, "
-        f"{len(a['atrasadas'])} atrasadas y {len(a['pendientes'])} pendientes. "
-        f"Avance global: **{avance}%** — Riesgo **{a['riesgo']}**.\n\n"
+        f"El proyecto registra **{avance}% de avance** sobre {len(proyecto['tareas'])} tareas totales. "
+        f"{len(a['completadas'])} completadas, {len(a['en_progreso'])} en ejecución y "
+        f"{len(a['atrasadas'])} con retraso. Nivel de riesgo: **{a['riesgo']}**.\n\n"
     )
-    for area, datos in a["rendimiento_areas"].items():
-        icono = "🔴" if datos["atrasadas"] > 0 else ("🟡" if datos["avance_promedio"] < 60 else "🟢")
-        texto += f"- {icono} **{area}**: {datos['avance_promedio']}% avance"
-        if datos["atrasadas"]:
-            texto += f" · {datos['atrasadas']} atrasada(s)"
-        texto += "\n"
-    texto += "\n"
- 
-    texto += "## ⚡ ACTO 2 — COMPLICACIÓN\n"
+
+    texto += "## ⚡ IMPACTO\n"
     if a["atrasadas"]:
-        texto += "**Tareas con retraso:**\n"
-        for t in a["atrasadas"]:
+        for t in a["atrasadas"][:3]:
             hitos_txt = _resumen_hitos(t).replace(" | ", " · ") if t.get("hitos") else ""
-            texto += f"- 🔴 **{t['nombre']}** ({t.get('recurso','—')}, {calcular_avance_tarea(t)}%{hitos_txt})\n"
-        texto += "\n"
+            texto += f"- **{t['nombre']}** ({t.get('recurso','—')}, {calcular_avance_tarea(t)}%{hitos_txt}) — retraso activo con impacto en plazo.\n"
     criticas = [t for t in a["en_progreso"] if calcular_avance_tarea(t) < 40]
-    if criticas:
-        texto += "**Avance lento (< 40%):**\n"
-        for t in criticas:
-            hitos_txt = _resumen_hitos(t).replace(" | ", " · ") if t.get("hitos") else ""
-            texto += f"- 🟡 **{t['nombre']}** — {calcular_avance_tarea(t)}%{hitos_txt}\n"
-        texto += "\n"
-    texto += f"**Recurso más cargado:** {a['recurso_critico']} · **Área crítica:** {a['area_critica']}\n\n"
-    texto += "**Rendimiento por trabajador:**\n"
-    for w, d in a["rendimiento_trabajadores"].items():
-        icono = "🔴" if d["atrasadas"] > 0 else ("🟢" if d["avance_promedio"] >= 75 else "🟡")
-        texto += f"- {icono} **{w}**: {d['avance_promedio']}% · {d['total']} tareas"
-        if d["atrasadas"]:
-            texto += f" · ⚠️ {d['atrasadas']} atrasada(s)"
-        texto += "\n"
+    for t in criticas[:2]:
+        texto += f"- **{t['nombre']}** con {calcular_avance_tarea(t)}% de avance — riesgo de convertirse en tarea crítica.\n"
+    if not a["atrasadas"] and not criticas:
+        texto += "- Sin impactos críticos identificados en el período actual.\n"
     texto += "\n"
- 
-    texto += "## 🎯 ACTO 3 — PLAN DE ACCIÓN\n"
+
+    texto += "## ⚠️ RIESGOS\n"
+    texto += f"- Recurso con mayor carga: **{a['recurso_critico']}** — riesgo de sobrecarga operacional.\n"
+    texto += f"- Área crítica: **{a['area_critica']}** — concentración de tareas pendientes.\n"
+    for area, datos in a["rendimiento_areas"].items():
+        if datos["atrasadas"] > 0:
+            texto += f"- Área **{area}**: {datos['atrasadas']} tarea(s) atrasada(s), avance promedio {datos['avance_promedio']}%.\n"
+    texto += "\n"
+
+    texto += "## ✅ ACCIONES\n"
     if a["riesgo"] == "🔴 Alto":
         texto += (
-            "1. 🚨 **Convocar reunión de crisis** con responsables de tareas atrasadas.\n"
-            "2. 🔄 **Reasignar recursos** hacia tareas críticas inmediatamente.\n"
-            "3. 📋 **Revisar alcance**: evaluar qué puede simplificarse o postergarse.\n"
-            "4. 📊 **Activar reporte diario** de avance hasta estabilizar.\n\n"
+            f"- **{a['recurso_critico']}** — Revisar y redistribuir carga de tareas críticas — Reducir retrasos activos — Esta semana.\n"
+            "- **Jefatura** — Convocar reunión de seguimiento de emergencia — Alinear al equipo sobre estado real — Hoy.\n"
+            "- **Planificación** — Evaluar reducción de alcance en tareas no críticas — Liberar capacidad operacional — 48 horas.\n"
+            "- **Equipo** — Activar reporte diario de avance por tarea — Visibilidad en tiempo real — Inmediato.\n\n"
         )
     elif a["riesgo"] == "🟡 Medio":
         texto += (
-            f"1. ⚡ **Apoyar a {a['recurso_critico']}**: revisar y redistribuir su carga.\n"
-            f"2. 🔍 **Check-in cada 2 días** en {a['area_critica']}.\n"
-            "3. 📅 **Adelantar tareas pendientes** sin dependencias bloqueantes.\n"
-            "4. 🎯 **Definir hitos intermedios** para las próximas 2 semanas.\n\n"
+            f"- **{a['recurso_critico']}** — Revisar distribución de tareas asignadas — Equilibrar carga de trabajo — Esta semana.\n"
+            f"- **Jefatura de {a['area_critica']}** — Realizar seguimiento cada 48 horas — Prevenir nuevos retrasos — Inmediato.\n"
+            "- **Planificación** — Adelantar inicio de tareas sin dependencias bloqueantes — Ganar margen de plazo — Esta semana.\n"
+            "- **Equipo** — Definir hitos intermedios para las próximas 2 semanas — Mayor control de avance — 3 días.\n\n"
         )
     else:
         texto += (
-            "1. ✅ **Mantener el ritmo** — el equipo está ejecutando bien.\n"
-            "2. 📈 **Anticipar tareas pendientes** antes de su fecha.\n"
-            "3. 🔭 **Confirmar fechas de entrega** con cada responsable.\n"
-            "4. 📣 **Comunicar el buen estado** al equipo y stakeholders.\n\n"
+            "- **Equipo** — Mantener ritmo de ejecución actual — Consolidar avance — Continuo.\n"
+            "- **Planificación** — Anticipar inicio de tareas pendientes sin dependencias — Reducir riesgo futuro — Esta semana.\n"
+            "- **Jefatura** — Confirmar fechas de entrega con cada responsable — Asegurar cumplimiento — 48 horas.\n"
+            "- **Comunicaciones** — Informar estado positivo del proyecto a stakeholders — Alinear expectativas — Esta semana.\n\n"
         )
-    texto += f"**Proyección:** {a['proyeccion']}.\n\n"
-    texto += "---\n_⚠️ Análisis local — configura `GEMINI_API_KEY` en `.env` para IA real._\n"
+
+    texto += f"**Proyección de cierre:** {a['proyeccion']}.\n\n"
+    texto += "---\n_⚠️ Análisis local — configura `GEMINI_API_KEY` en `.env` para activar análisis con IA._\n"
     return texto
  
  
@@ -451,7 +446,7 @@ def _responder_local(proyecto: dict, analisis: dict, pregunta: str) -> str:
     p = pregunta.lower().strip()
     a = analisis
  
-    if any(x in p for x in ["riesgo", "peligro", "crítico", "critico", "alerta"]):
+    if any(x in p for x in ["riesgo", "peligro", "crítico", "critico", "alerta", "mayor riesgo"]):
         detalle = (f" Tareas atrasadas: {', '.join(t['nombre'] for t in a['atrasadas'])}."
                    if a["atrasadas"] else "")
         return f"Riesgo **{a['riesgo']}**.{detalle} Avance: {a['avance']}%."
@@ -461,7 +456,7 @@ def _responder_local(proyecto: dict, analisis: dict, pregunta: str) -> str:
                 f"{len(a['completadas'])} completadas · {len(a['en_progreso'])} en progreso · "
                 f"{len(a['atrasadas'])} atrasadas · {len(a['pendientes'])} pendientes.")
  
-    if any(x in p for x in ["proyecc", "plazo", "terminar", "fecha", "cierre"]):
+    if any(x in p for x in ["proyecc", "plazo", "terminar", "fecha", "cierre", "llegamos", "llegamos a tiempo"]):
         return f"Proyección: **{a['proyeccion']}**. Avance actual: {a['avance']}%."
  
     if any(x in p for x in ["atras", "retras", "vencid", "demor"]):
@@ -482,7 +477,19 @@ def _responder_local(proyecto: dict, analisis: dict, pregunta: str) -> str:
             pct   = round(comp / total * 100)
             lineas.append(f"- **{t['nombre']}**: {comp}/{total} hitos ({pct}%)")
         return "**Estado de hitos por tarea:**\n" + "\n".join(lineas)
- 
+
+    if any(x in p for x in ["tarea", "crítica", "critica", "importante", "prioridad"]):
+        if a["atrasadas"]:
+            t = a["atrasadas"][0]
+            return (f"Tarea más crítica: **{t['nombre']}** — {t.get('recurso','—')}, "
+                    f"{calcular_avance_tarea(t)}% de avance, estado: Atrasada.")
+        if a["en_progreso"]:
+            candidatas = sorted(a["en_progreso"], key=calcular_avance_tarea)
+            t = candidatas[0]
+            return (f"Tarea con menor avance en ejecución: **{t['nombre']}** — "
+                    f"{t.get('recurso','—')}, {calcular_avance_tarea(t)}%.")
+        return "✅ No hay tareas en estado crítico."
+
     for w, d in a["rendimiento_trabajadores"].items():
         if w.lower() in p:
             estado = ("🔴 con retrasos" if d["atrasadas"] > 0
@@ -505,33 +512,84 @@ def _responder_local(proyecto: dict, analisis: dict, pregunta: str) -> str:
  
     if any(x in p for x in ["hacer", "recomiend", "acción", "accion", "prior", "siguiente"]):
         if a["riesgo"] == "🔴 Alto":
-            return "🔴 Reunión de crisis hoy, reasignar recursos y activar reporte diario."
+            return "🔴 Convocar reunión de seguimiento, reasignar recursos críticos y activar reporte diario de avance."
         elif a["riesgo"] == "🟡 Medio":
-            return f"🟡 Apoyar a **{a['recurso_critico']}**, monitorear **{a['area_critica']}** cada 2 días."
-        return "🟢 Mantén el ritmo y anticipa tareas pendientes."
+            return f"🟡 Apoyar a **{a['recurso_critico']}**, monitorear **{a['area_critica']}** con seguimiento cada 48 horas."
+        return "🟢 Mantener ritmo de ejecución y anticipar inicio de tareas pendientes."
  
     sugerencias = [
         "¿Cuál es el riesgo del proyecto?",
         "¿Cómo va el avance?",
         "¿Qué tareas están atrasadas?",
-        "¿Cuál es la proyección de cierre?",
+        "¿Llegamos a tiempo?",
+        "¿Qué tarea es más crítica?",
+        "¿Dónde está el mayor riesgo?",
         "¿Cómo está el rendimiento del equipo?",
-        "¿Cómo van los hitos?",
-        "¿Qué debería hacer primero?",
     ]
     return "Puedo responder sobre:\n" + "\n".join(f"- *{s}*" for s in sugerencias)
  
  
 # ─────────────────────────────────────────────────────────────────────────────
+# HELPER: CAJA DE ALERTA DINÁMICA
+# ─────────────────────────────────────────────────────────────────────────────
+def _render_alerta_ejecutiva(analisis: dict, proyecto: dict) -> None:
+    """Muestra una caja de alerta interpretativa en el dashboard."""
+    a = analisis
+
+    if a["riesgo"] == "🔴 Alto":
+        tarea_nombre = a["atrasadas"][0]["nombre"] if a["atrasadas"] else "múltiples tareas"
+        responsable  = a["atrasadas"][0].get("recurso", a["recurso_critico"]) if a["atrasadas"] else a["recurso_critico"]
+        color, icono, titulo = "#ef4444", "🔴", "PROYECTO EN RIESGO CRÍTICO"
+        mensaje = (
+            f"El atraso en <strong>{tarea_nombre}</strong> "
+            f"(resp. {responsable}) compromete el plazo de entrega. "
+            f"Avance actual: <strong>{a['avance']}%</strong> — se requiere intervención inmediata."
+        )
+    elif a["riesgo"] == "🟡 Medio":
+        tarea_nombre = a["atrasadas"][0]["nombre"] if a["atrasadas"] else a["area_critica"]
+        color, icono, titulo = "#f59e0b", "🟡", "PROYECTO CON ALERTAS ACTIVAS"
+        mensaje = (
+            f"<strong>{tarea_nombre}</strong> presenta desviación respecto al plan base. "
+            f"Avance: <strong>{a['avance']}%</strong> — monitoreo estrecho recomendado."
+        )
+    else:
+        color, icono, titulo = "#22c55e", "🟢", "PROYECTO EN PLAZO"
+        mensaje = (
+            f"Ejecución dentro de parámetros esperados. "
+            f"Avance: <strong>{a['avance']}%</strong> — {len(a['completadas'])} tareas completadas."
+        )
+
+    st.markdown(
+        f"""
+        <div style="
+            border-left: 4px solid {color};
+            background: rgba(255,255,255,0.04);
+            border-radius: 6px;
+            padding: 0.85rem 1.1rem;
+            margin-bottom: 1rem;
+        ">
+            <div style="font-weight:700; color:{color}; font-size:0.8rem; letter-spacing:0.05em; margin-bottom:0.3rem;">
+                {icono} {titulo}
+            </div>
+            <div style="color:#141414; font-size:0.9rem; line-height:1.5;">
+                {mensaje}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # PÁGINA STREAMLIT
 # ─────────────────────────────────────────────────────────────────────────────
 def pagina_storytelling():
+    # ── Encabezado con mensaje de valor ──────────────────────────────────────
     st.markdown("## 🧠 Análisis Inteligente con IA")
     st.markdown(
-        "Obtén interpretación automática del estado de tu proyecto, "
-        "riesgos y recomendaciones generadas con Gemini AI."
+        "> **Detecta riesgos, atrasos y toma decisiones en proyectos automáticamente con IA.**"
     )
- 
+
     proyecto = get_proyecto()
  
     if not proyecto:
@@ -561,8 +619,12 @@ def pagina_storytelling():
         return
  
     st.markdown("---")
- 
+
+    # ── Métricas + alerta ejecutiva ───────────────────────────────────────────
     analisis = analizar_proyecto(proyecto)
+
+    _render_alerta_ejecutiva(analisis, proyecto)
+
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("📊 Avance total", f"{analisis['avance']}%")
     col2.metric("✅ Completadas",  len(analisis["completadas"]))
@@ -571,6 +633,7 @@ def pagina_storytelling():
  
     st.markdown("---")
  
+    # ── Análisis ejecutivo ────────────────────────────────────────────────────
     st.markdown("### 📋 Análisis ejecutivo")
     tiene_key = bool(GEMINI_API_KEY)
     if tiene_key:
@@ -600,27 +663,37 @@ def pagina_storytelling():
  
     st.markdown("---")
  
-    st.markdown("### 💬 Pregunta sobre tu proyecto")
+    # ── Chat con IA ───────────────────────────────────────────────────────────
+    st.markdown("### 💬 Consulta al asistente")
     st.markdown(
-        "Hazle preguntas al asistente sobre el estado del proyecto, "
-        "trabajadores, tareas o recomendaciones."
+        "Realiza consultas sobre el estado del proyecto, tareas críticas, "
+        "equipo o recomendaciones de acción."
     )
  
     if "chat_historial" not in st.session_state:
         st.session_state["chat_historial"] = []
  
-    st.markdown("**💡 Preguntas frecuentes:**")
+    # ── Botones de preguntas rápidas (actualizados) ───────────────────────────
+    st.markdown("**💡 Consultas frecuentes:**")
     sugerencias = [
-        "¿Cuál es el riesgo del proyecto?",
+        "¿Qué tarea es más crítica?",
+        "¿Llegamos a tiempo?",
+        "¿Dónde está el mayor riesgo?",
         "¿Quién está más retrasado?",
         "¿Cómo van los hitos?",
         "¿Qué debo hacer primero?",
     ]
-    cols = st.columns(len(sugerencias))
-    for i, sug in enumerate(sugerencias):
-        if cols[i].button(sug, key=f"sug_{i}", use_container_width=True):
-            st.session_state["pregunta_rapida"] = sug
- 
+    # Primera fila: 3 botones
+    cols1 = st.columns(3)
+    for i in range(3):
+        if cols1[i].button(sugerencias[i], key=f"sug_{i}", use_container_width=True):
+            st.session_state["pregunta_rapida"] = sugerencias[i]
+    # Segunda fila: 3 botones
+    cols2 = st.columns(3)
+    for i in range(3, 6):
+        if cols2[i - 3].button(sugerencias[i], key=f"sug_{i}", use_container_width=True):
+            st.session_state["pregunta_rapida"] = sugerencias[i]
+
     st.markdown("")
  
     for msg in st.session_state["chat_historial"]:
@@ -633,7 +706,7 @@ def pagina_storytelling():
     if "pregunta_rapida" in st.session_state:
         pregunta_a_procesar = st.session_state.pop("pregunta_rapida")
  
-    if pregunta_input := st.chat_input("Ej: ¿Cómo va Jorge? ¿Cómo van los hitos?"):
+    if pregunta_input := st.chat_input("Ej: ¿Cuál es la tarea más crítica? ¿Llegamos a tiempo?"):
         pregunta_a_procesar = pregunta_input
  
     if pregunta_a_procesar:
@@ -644,7 +717,7 @@ def pagina_storytelling():
             "texto": pregunta_a_procesar,
         })
         with st.chat_message("assistant"):
-            with st.spinner("Consultando Gemini..." if tiene_key else "Pensando..."):
+            with st.spinner("Consultando Gemini..." if tiene_key else "Procesando..."):
                 respuesta, usado_ia = responder_pregunta(
                     proyecto,
                     pregunta_a_procesar,
@@ -665,4 +738,3 @@ def pagina_storytelling():
         if st.button("🗑️ Limpiar conversación"):
             st.session_state["chat_historial"] = []
             st.rerun()
- 

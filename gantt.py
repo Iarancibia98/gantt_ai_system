@@ -8,8 +8,8 @@ from data import (   get_proyecto,
     calcular_duracion,
     avance_total_proyecto,
     calcular_avance_tarea)
-
-
+ 
+ 
 # ─────────────────────────────────────────────────────────────────────────────
 # COLORES DE ÁREA
 # ─────────────────────────────────────────────────────────────────────────────
@@ -24,32 +24,32 @@ COLORES_AREA = {
     "RRHH / Administración":    "#17A2B8",
     "Otro":                     "#6C757D",
 }
-
-
+ 
+ 
 # ─────────────────────────────────────────────────────────────────────────────
 # GANTT
 # ─────────────────────────────────────────────────────────────────────────────
 def build_gantt_figure(tareas: list, nombre_proyecto: str) -> go.Figure:
     hoy = date.today()
     fig = go.Figure()
-
+ 
     tareas_ord = sorted(
         tareas,
         key=lambda t: (calcular_estado_tarea(t, hoy), t["fecha_inicio"])
     )
-
+ 
     for tarea in tareas_ord:
         estado   = calcular_estado_tarea(tarea, hoy)
         duracion = calcular_duracion(tarea)
         color    = COLORES_ESTADO.get(estado, COLORES["text_secondary"])
         avance   = calcular_avance_tarea(tarea)
-
+ 
         fecha_inicio = tarea["fecha_inicio"]
         fecha_fin    = tarea["fecha_fin"]
-
+ 
         area    = tarea.get("area", "")
         label_y = f"{area}  |  {tarea['nombre']}" if area else tarea["nombre"]
-
+ 
         # ── Hito (1 día) ──────────────────────────────────────────────────
         if duracion <= 1:
             fig.add_trace(go.Scatter(
@@ -75,51 +75,70 @@ def build_gantt_figure(tareas: list, nombre_proyecto: str) -> go.Figure:
                 ),
             ))
             continue
-
+ 
         # ── Cálculos ──────────────────────────────────────────────────────
         dias_esperados = max(0, min((hoy - fecha_inicio).days, duracion))
         pct_esperado   = (dias_esperados / duracion * 100) if duracion else 0
         dias_avance    = duracion if avance == 100 else max(int(duracion * avance / 100), 1 if avance > 0 else 0)
         color_texto    = "white" if avance > 40 else "#212529"
-
-
+        es_atrasada    = estado == "Atrasada"
+ 
         # ── Barra fondo ───────────────────────────────────────────────────
         if avance < 100:
+            fondo_opacity = 0.15 if es_atrasada else 0.35
+            fondo_color   = "#DC2626" if es_atrasada else color
             fig.add_trace(go.Bar(
-                x=[fecha_fin.isoformat()],          # ← fecha fin, no número de días
+                x=[fecha_fin.isoformat()],
                 y=[label_y],
                 base=[fecha_inicio.isoformat()],
                 orientation="h",
-                marker=dict(color=color, opacity=0.35,
-                            line=dict(color=color, width=1)),
+                marker=dict(
+                    color=fondo_color,
+                    opacity=fondo_opacity,
+                    line=dict(
+                        color="#DC2626" if es_atrasada else color,
+                        width=2 if es_atrasada else 1,
+                    ),
+                ),
                 showlegend=False,
                 hoverinfo="skip",
             ))
-
+ 
         # ── Barra roja atraso ─────────────────────────────────────────────
         if avance < pct_esperado and dias_esperados > 0 and avance < 100:
             fecha_esperada = (fecha_inicio + timedelta(days=dias_esperados)).isoformat()
             fig.add_trace(go.Bar(
-                x=[fecha_esperada],                 # ← fecha hasta donde debería ir
+                x=[fecha_esperada],
                 y=[label_y],
                 base=[fecha_inicio.isoformat()],
                 orientation="h",
-                marker=dict(color="rgba(220,38,38,0.25)",
-                            line=dict(color="rgba(220,38,38,0.7)", width=1)),
+                marker=dict(
+                    color="rgba(220,38,38,0.55)" if es_atrasada else "rgba(220,38,38,0.25)",
+                    line=dict(
+                        color="rgba(220,38,38,1.0)" if es_atrasada else "rgba(220,38,38,0.7)",
+                        width=2 if es_atrasada else 1,
+                    ),
+                ),
                 showlegend=False,
                 hoverinfo="skip",
             ))
-
+ 
         # ── Barra avance real ─────────────────────────────────────────────
         if dias_avance > 0:
             fecha_avance = (fecha_inicio + timedelta(days=dias_avance)).isoformat()
             fig.add_trace(go.Bar(
-                x=[fecha_avance],                   # ← fecha hasta donde llegó
+                x=[fecha_avance],
                 y=[label_y],
                 base=[fecha_inicio.isoformat()],
                 orientation="h",
-                marker=dict(color=color, opacity=1.0,
-                            line=dict(color="white", width=0.5)),
+                marker=dict(
+                    color="#DC2626" if es_atrasada else color,
+                    opacity=1.0,
+                    line=dict(
+                        color="white" if not es_atrasada else "#ff6b6b",
+                        width=0.5 if not es_atrasada else 1.5,
+                    ),
+                ),
                 showlegend=False,
                 customdata=[[
                     tarea["nombre"], tarea.get("recurso", "—"),
@@ -138,22 +157,25 @@ def build_gantt_figure(tareas: list, nombre_proyecto: str) -> go.Figure:
                     "🚨 Estado: <b>%{customdata[5]}</b><extra></extra>"
                 ),
             ))
-
+ 
         # ── Etiqueta % ────────────────────────────────────────────────────
-        mid       = fecha_inicio + timedelta(days=duracion / 2)
+        mid = fecha_inicio + timedelta(days=duracion / 2)
         if avance > 0:
+            etiqueta = "✓ 100%" if avance == 100 else f"{avance}%"
+            # tareas atrasadas: etiqueta en rojo para mayor visibilidad
+            color_etiqueta = "#FF4444" if es_atrasada else color_texto
             fig.add_annotation(
                 x=mid, y=label_y,
-                text="✓ 100%" if avance == 100 else f"{avance}%",
+                text=etiqueta,
                 showarrow=False,
-                font=dict(color=color_texto, size=11),
+                font=dict(color=color_etiqueta, size=11,
+                          family="DM Mono" if es_atrasada else "DM Sans"),
             )
-
+ 
     # ── Rango eje X ───────────────────────────────────────────────────────
-
     x_min = min(t["fecha_inicio"] for t in tareas_ord) - timedelta(days=2)
     x_max = max(t["fecha_fin"] for t in tareas_ord) + timedelta(days=10)
-
+ 
     # ── Línea HOY ─────────────────────────────────────────────────────────
     fig.add_shape(
         type="line",
@@ -169,11 +191,11 @@ def build_gantt_figure(tareas: list, nombre_proyecto: str) -> go.Figure:
         bordercolor="#DC2626",
         borderwidth=1.5, borderpad=3,
     )
-
+ 
     layout = {**PLOTLY_LAYOUT}
     layout.pop("xaxis", None)
     layout.pop("yaxis", None)
-
+ 
     layout.update(dict(
         title=dict(
             text=f"<b>{nombre_proyecto}</b>",
@@ -200,11 +222,11 @@ def build_gantt_figure(tareas: list, nombre_proyecto: str) -> go.Figure:
         height=max(360, 52 * len(tareas) + 80),
         margin=dict(l=10, r=30, t=55, b=60),
     ))
-
+ 
     fig.update_layout(**layout)
     return fig
-
-
+ 
+ 
 # ─────────────────────────────────────────────────────────────────────────────
 # LEYENDA DE ESTADOS
 # ─────────────────────────────────────────────────────────────────────────────
@@ -218,8 +240,8 @@ def leyenda_estados():
             f"<span style='color:#6C757D;font-size:0.82rem;'>{estado}</span></span>",
             unsafe_allow_html=True,
         )
-
-
+ 
+ 
 # ─────────────────────────────────────────────────────────────────────────────
 # PÁGINA GANTT
 # ─────────────────────────────────────────────────────────────────────────────
@@ -241,16 +263,17 @@ def pagina_gantt():
         </div>
         """, unsafe_allow_html=True)
         return
-
+ 
     info   = proyecto["info"]
     tareas = proyecto["tareas"]
     hoy    = date.today()
+ 
     # ── Métricas ──────────────────────────────────────────────────────────────
     avance        = avance_total_proyecto(tareas)
     atrasadas_n   = sum(1 for t in tareas if calcular_estado_tarea(t, hoy) == "Atrasada")
     en_riesgo_n   = sum(1 for t in tareas if calcular_estado_tarea(t, hoy) == "En Riesgo")
     completadas_n = sum(1 for t in tareas if calcular_estado_tarea(t, hoy) == "Completada")
-
+ 
     # ── Header ────────────────────────────────────────────────────────────────
     st.markdown(
         f"<p style='color:#ADB5BD;font-size:0.75rem;text-transform:uppercase;"
@@ -259,14 +282,14 @@ def pagina_gantt():
         f"margin:0 0 1rem 0;'>{info['nombre']}</p>",
         unsafe_allow_html=True,
     )
-
+ 
     # ── KPIs ──────────────────────────────────────────────────────────────────
     c1, c2, c3, c4 = st.columns(4)
     c1.markdown(kpi_card(f"{avance}%",                 "Avance total", "kpi-purple", "📈"), unsafe_allow_html=True)
     c2.markdown(kpi_card(atrasadas_n,                  "Atrasadas",    "kpi-red",    "⚠️"), unsafe_allow_html=True)
     c3.markdown(kpi_card(en_riesgo_n,                  "En riesgo",    "kpi-yellow", "🟡"), unsafe_allow_html=True)
     c4.markdown(kpi_card(f"{completadas_n}/{len(tareas)}", "Completadas", "kpi-green", "✅"), unsafe_allow_html=True)
-
+ 
     # ── Insight automático ────────────────────────────────────────────────────
     atrasadas_lst = [t for t in tareas if calcular_estado_tarea(t, hoy) == "Atrasada"]
     if atrasadas_lst:
@@ -280,26 +303,45 @@ def pagina_gantt():
         st.warning(f"🟡 **{en_riesgo_n} tarea(s) en riesgo.** Monitorear de cerca.")
     else:
         st.success("✅ Todas las tareas van dentro del plan.")
-
+ 
     # ── Barra de progreso global ──────────────────────────────────────────────
     st.progress(avance / 100)
     st.caption(f"Progreso general del proyecto · {avance}% completado")
-
+ 
     st.markdown("---")
-
+ 
     if not tareas:
         st.info("Este proyecto no tiene tareas. Agrega tareas desde ➕ Nuevo Proyecto.")
         return
-
-    # ── Gantt ─────────────────────────────────────────────────────────────────
-    leyenda_estados()
-    st.plotly_chart(build_gantt_figure(tareas, info["nombre"]), use_container_width=True)
-
+ 
+    # ── Filtro + Gantt (un só gráfico que se actualiza) ─────────────────────
+    areas_disponibles = sorted(set(t.get("area", "Otro") for t in tareas))
+    area_filtro = st.multiselect(
+        "Filtrar por área",
+        options=areas_disponibles,
+        default=areas_disponibles,
+        key="filtro_area",
+    )
+ 
+    if not area_filtro:
+        st.info("Selecciona al menos un área para ver el Gantt.")
+    else:
+        tareas_visibles = [t for t in tareas if t.get("area", "Otro") in area_filtro]
+        titulo_gantt    = (
+            info["nombre"]
+            if len(area_filtro) == len(areas_disponibles)
+            else f"{info['nombre']} — {', '.join(area_filtro)}"
+        )
+        if len(area_filtro) < len(areas_disponibles):
+            st.caption(f"Mostrando {len(tareas_visibles)} de {len(tareas)} tareas.")
+        leyenda_estados()
+        st.plotly_chart(build_gantt_figure(tareas_visibles, titulo_gantt), use_container_width=True)
+ 
     st.markdown("---")
-
+ 
     # ── Tabla de estado ───────────────────────────────────────────────────────
     st.markdown("### 📋 Estado de tareas")
-
+ 
     df = pd.DataFrame([{
         "Tarea":    t["nombre"],
         "Recurso":  t.get("recurso", "—"),
@@ -310,52 +352,49 @@ def pagina_gantt():
         "Avance": f"{calcular_avance_tarea(t)}%",
         "Estado":   calcular_estado_tarea(t, hoy),
     } for t in tareas])
-
+ 
     def _color_estado(val):
         m = {
             "Completada":  "background-color:rgba(40,167,69,0.1);color:#28A745;font-weight:600",
             "En Progreso": "background-color:rgba(0,123,255,0.1);color:#007BFF;font-weight:600",
             "En Riesgo":   "background-color:rgba(255,193,7,0.1);color:#D39E00;font-weight:600",
-            "Atrasada":    "background-color:rgba(220,53,69,0.1);color:#DC3545;font-weight:600",
+            "Atrasada":    "background-color:rgba(220,53,69,0.18);color:#DC3545;font-weight:700",
             "Pendiente":   "background-color:rgba(108,117,125,0.08);color:#6C757D",
         }
         return m.get(val, "")
-
+ 
     st.dataframe(
         df.style.map(_color_estado, subset=["Estado"]),
         use_container_width=True,
         hide_index=True,
     )
-
+ 
     st.markdown("---")
-
+ 
     # ── Actualizar avance ─────────────────────────────────────────────────────
-
     st.markdown("### ✏️ Actualizar avance")
     st.caption("Marca los hitos completados de cada tarea.")
-
+ 
     nombre_activo = st.session_state.proyecto_activo
     tareas_edit   = st.session_state.proyectos[nombre_activo]["tareas"]
-
+ 
     tarea_sel = st.selectbox(
         "Selecciona tarea",
         [t["nombre"] for t in tareas_edit],
         key="tarea_hitos_sel"
     )
-
+ 
     idx   = next(i for i, t in enumerate(tareas_edit) if t["nombre"] == tarea_sel)
     tarea = tareas_edit[idx]
     hitos = tarea.get("hitos", [])
-
+ 
     if not hitos:
-        # Sin hitos → mantener slider manual
         nuevo_avance = st.slider("Avance (%)", 0, 100, tarea.get("avance", 0), key="nav_upd")
         if st.button("💾 Guardar"):
             tareas_edit[idx]["avance"] = nuevo_avance
             st.success(f"✅ {tarea_sel} → {nuevo_avance}%")
             st.rerun()
     else:
-        # Con hitos → checkboxes
         st.markdown(f"**{len(hitos)} hitos** — cada uno vale `{round(100/len(hitos), 1)}%`")
         cambios = {}
         for j, hito in enumerate(hitos):
@@ -366,34 +405,11 @@ def pagina_gantt():
             )
         avance_calc = round(sum(cambios.values()) / len(hitos) * 100)
         st.info(f"📊 Avance calculado: **{avance_calc}%**")
-
+ 
         if st.button("💾 Guardar hitos"):
             for j, completado in cambios.items():
                 tareas_edit[idx]["hitos"][j]["completado"] = completado
-            tareas_edit[idx]["avance"] = avance_calc  # sincronizar
+            tareas_edit[idx]["avance"] = avance_calc
             st.success(f"✅ {tarea_sel} → {avance_calc}%")
             st.rerun()
-    st.markdown("---")
-
-    # ── Filtro por área ───────────────────────────────────────────────────────
-    st.markdown("### 🔍 Filtrar por área")
-    areas_disponibles = sorted(set(t.get("area", "Otro") for t in tareas))
-    area_filtro = st.multiselect(
-        "Área(s)", options=areas_disponibles,
-        default=areas_disponibles, key="filtro_area"
-    )
-
-    if not area_filtro:
-        st.info("Selecciona al menos un área.")
-    elif len(area_filtro) < len(areas_disponibles):
-        tareas_filtradas = [t for t in tareas if t.get("area", "Otro") in area_filtro]
-        st.plotly_chart(
-            build_gantt_figure(
-                tareas_filtradas,
-                f"{info['nombre']} — {', '.join(area_filtro)}"
-            ),
-            use_container_width=True,
-        )
-        st.caption(f"Mostrando {len(tareas_filtradas)} de {len(tareas)} tareas.")
-    else:
-        st.caption("✅ Mostrando todas las áreas — ver Gantt principal arriba.")
+ 

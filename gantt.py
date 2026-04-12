@@ -290,19 +290,25 @@ def pagina_gantt():
     c3.markdown(kpi_card(en_riesgo_n,                  "En riesgo",    "kpi-yellow", "🟡"), unsafe_allow_html=True)
     c4.markdown(kpi_card(f"{completadas_n}/{len(tareas)}", "Completadas", "kpi-green", "✅"), unsafe_allow_html=True)
  
-    # ── Insight automático ────────────────────────────────────────────────────
+# ── Insight automático ────────────────────────────────────────────────────
     atrasadas_lst = [t for t in tareas if calcular_estado_tarea(t, hoy) == "Atrasada"]
+
     if atrasadas_lst:
         nombres = ", ".join(t["nombre"] for t in atrasadas_lst[:2])
         extra   = f" y {len(atrasadas_lst) - 2} más" if len(atrasadas_lst) > 2 else ""
+
         st.error(
-            f"⚠️ **{len(atrasadas_lst)} tarea(s) atrasada(s)** pueden afectar el plazo: "
-            f"*{nombres}{extra}.*"
+            f"🔴 Riesgo crítico: {len(atrasadas_lst)} tarea(s) atrasada(s) pueden comprometer el plazo del proyecto.\n\n"
+            f"Tarea(s) afectada(s): *{nombres}{extra}*"
         )
+
     elif en_riesgo_n:
-        st.warning(f"🟡 **{en_riesgo_n} tarea(s) en riesgo.** Monitorear de cerca.")
+        st.warning(
+            f"🟡 Riesgo: {en_riesgo_n} tarea(s) podrían atrasarse si no se actúa."
+        )
+
     else:
-        st.success("✅ Todas las tareas van dentro del plan.")
+        st.success("✅ Proyecto bajo control: sin riesgos ni atrasos relevantes.")
  
     # ── Barra de progreso global ──────────────────────────────────────────────
     st.progress(avance / 100)

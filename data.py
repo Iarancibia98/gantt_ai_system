@@ -284,12 +284,9 @@ def pagina_inicio():
             st.progress(avance / 100)
 
     st.markdown("---")
-    st.markdown("### 🗺️ ¿Cómo usar el sistema?")
+    st.markdown("### Explora el Gantt, revisa KPIs y genera análisis con IA.")
     st.markdown("""
-1. **➕ Nuevo Proyecto** → Crea el proyecto e ingresa las tareas manualmente o importa un CSV
-2. **📅 Ver Gantt** → Visualiza la carta Gantt y actualiza el avance
-3. **📊 Dashboard** → Revisa KPIs y estado general
-4. **🧠 Análisis IA** → Obtén interpretación automática con recomendaciones
+
 """)
 
 

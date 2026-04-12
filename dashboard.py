@@ -324,7 +324,7 @@ def pagina_dashboard():
         st.progress(avance / 100)
     with col_info:
         st.markdown(f"**Salud:** {salud}")
-        st.caption(f"👤 {info.get('responsable','—')}")
+        st.caption(f"👤 Responsable: {info.get('responsable','—')}")
         st.caption(f"🎯 Prioridad: {info.get('prioridad','—')}")
 
     # ── Bloque de hitos (solo si existen) ─────────────────────────────────────
@@ -465,10 +465,11 @@ def pagina_dashboard():
 
     # ── Exportar ──────────────────────────────────────────────────────────────
     st.markdown("---")
-    st.markdown("### 📥 Exportar")
+    st.markdown("### 📥 Exportar informe ejecutivo")
     st.download_button(
         label="⬇️ Descargar CSV",
         data=df.to_csv(index=False).encode("utf-8"),
         file_name=f"dashboard_{info['nombre'].replace(' ','_')}.csv",
         mime="text/csv",
     )
+    st.markdown("### 📄 Generar informe ejecutivo (PDF) [próximamente]")
